@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Ecert.DocsReview.Api/Ecert.DocsReview.Api.csproj" />
+  </Folder>
+</Solution>
