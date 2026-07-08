@@ -2,4 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Ecert.DocsReview.Api/Ecert.DocsReview.Api.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Ecert.DocsReview.Tests/Ecert.DocsReview.Tests.csproj" />
+  </Folder>
 </Solution>
