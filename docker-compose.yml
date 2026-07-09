@@ -22,6 +22,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Default: "Host=db;Port=5432;Database=ecert;Username=postgres;Password=postgres"
+      Storage__RootPath: /app/storage
+    volumes:
+      - pdf-storage:/app/storage
     ports:
       - "8080:8080"
     depends_on:
@@ -30,3 +33,4 @@ services:
 
 volumes:
   postgres-data:
+  pdf-storage:

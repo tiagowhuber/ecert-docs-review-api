@@ -5,7 +5,7 @@ namespace Ecert.DocsReview.Tests;
 public class DocumentStateMachineTests
 {
     public static readonly TheoryData<DocumentStatus, DocumentStatus> ValidTransitions = new()
-    {// all allowed status transitions
+    {
         { DocumentStatus.Created, DocumentStatus.PendingReview },
         { DocumentStatus.PendingReview, DocumentStatus.UnderReview },
         { DocumentStatus.UnderReview, DocumentStatus.Approved },

@@ -6,6 +6,9 @@
 # Claude Code local instructions
 CLAUDE.md
 
+# Uploaded/seeded PDF files (local runs)
+src/Ecert.DocsReview.Api/storage/
+
 # dotenv files
 .env
 

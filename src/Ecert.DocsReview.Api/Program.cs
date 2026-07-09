@@ -19,6 +19,18 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// Apply pending migrations and seed initial data on startup, so
+// `docker compose up` brings up a ready-to-use database.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
+
+    var storageRoot = app.Configuration["Storage:RootPath"]
+        ?? throw new InvalidOperationException("Missing Storage:RootPath configuration.");
+    await DataSeeder.SeedAsync(db, storageRoot);
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
