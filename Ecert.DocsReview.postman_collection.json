@@ -1,0 +1,301 @@
+{
+  "info": {
+    "name": "Ecert Document Review API",
+    "description": "Manual test collection for the ecert Document Review API.\n\nHow to use:\n1. Start the stack: `docker compose up --build` (API on http://localhost:8080).\n2. Open the 'Register document (201)' request, go to Body > form-data, and for the `File` row click 'Select Files' and pick a real .pdf. The other requests reuse the returned id automatically via the `documentId` collection variable.\n\nThe `baseUrl` variable defaults to http://localhost:8080 — change it under the collection's Variables tab if needed.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "documentId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Liveness/readiness probe. Returns 'Healthy' when the API and its Postgres connection are up."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Register",
+      "item": [
+        {
+          "name": "Register document (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201 Created', function () { pm.response.to.have.status(201); });",
+                  "pm.test('has Location header', function () { pm.response.to.have.header('Location'); });",
+                  "var json = pm.response.json();",
+                  "pm.test('status is Created and version 1', function () {",
+                  "  pm.expect(json.status).to.eql('Created');",
+                  "  pm.expect(json.currentVersionNumber).to.eql(1);",
+                  "});",
+                  "if (json && json.id) {",
+                  "  pm.collectionVariables.set('documentId', json.id);",
+                  "  console.log('Saved documentId =', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "Title", "value": "My Contract", "type": "text" },
+                { "key": "Type", "value": "Contract", "type": "text" },
+                { "key": "UploadedBy", "value": "tiago", "type": "text" },
+                { "key": "File", "type": "file", "src": null }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents"]
+            },
+            "description": "Registers a new document plus its first PDF version (multipart/form-data).\n\nBEFORE SENDING: in Body > form-data, set the `File` row's type to 'File' (dropdown on the key) and select a real .pdf.\n\nValid `Type` values: Contract, Annex, Quotation, Report, Other.\n\nDo NOT add a Content-Type header manually — Postman sets the multipart boundary for you.\n\nOn success returns 201 + Location header; the test script saves the new id into the `documentId` variable for the Consult requests."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Consult",
+      "item": [
+        {
+          "name": "Get document by id (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('returns the requested id', function () {",
+                  "  pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('documentId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}"]
+            },
+            "description": "Full detail for one document, including its version history. Uses the `documentId` captured by the Register request."
+          }
+        },
+        {
+          "name": "List all documents (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents"]
+            },
+            "description": "Lists document summaries (no version array). Includes the 3 seeded documents plus anything you register."
+          }
+        },
+        {
+          "name": "List by status (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documents?status=Created",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents"],
+              "query": [
+                { "key": "status", "value": "Created", "description": "One of: Created, PendingReview, UnderReview, Approved, Rejected, Archived" }
+              ]
+            },
+            "description": "Filter by status. Try Approved / Rejected / PendingReview to see the seeded documents in other states."
+          }
+        },
+        {
+          "name": "List by type (200)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documents?type=Report",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents"],
+              "query": [
+                { "key": "type", "value": "Report", "description": "One of: Contract, Annex, Quotation, Report, Other" }
+              ]
+            },
+            "description": "Filter by document type. `status` and `type` can be combined."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Validation (expected failures)",
+      "item": [
+        {
+          "name": "Get unknown id (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/11111111-1111-1111-1111-111111111111",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "11111111-1111-1111-1111-111111111111"]
+            },
+            "description": "Unknown id returns a 404 ProblemDetails body."
+          }
+        },
+        {
+          "name": "Register non-PDF file (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "Title", "value": "Bad", "type": "text" },
+                { "key": "Type", "value": "Other", "type": "text" },
+                { "key": "UploadedBy", "value": "tiago", "type": "text" },
+                { "key": "File", "type": "file", "src": null }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents"]
+            },
+            "description": "Select a NON-pdf file (e.g. a .txt) for the `File` row. The API checks the actual bytes (%PDF- magic number), not the filename, so this returns 400 'The uploaded file is not a valid PDF.'"
+          }
+        },
+        {
+          "name": "Register missing title (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "Type", "value": "Contract", "type": "text" },
+                { "key": "UploadedBy", "value": "tiago", "type": "text" },
+                { "key": "File", "type": "file", "src": null }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents"]
+            },
+            "description": "No Title field -> 400 'The Title field is required.' (Select a valid .pdf for File so the failure is specifically the missing title.)"
+          }
+        },
+        {
+          "name": "Register missing file (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "Title", "value": "No File", "type": "text" },
+                { "key": "Type", "value": "Contract", "type": "text" },
+                { "key": "UploadedBy", "value": "tiago", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents"]
+            },
+            "description": "No File field -> 400 'The File field is required.'"
+          }
+        }
+      ]
+    }
+  ]
+}
