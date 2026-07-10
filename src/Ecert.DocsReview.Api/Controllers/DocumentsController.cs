@@ -36,6 +36,35 @@ public class DocumentsController : ControllerBase
             nameof(GetById), new { id = result.Document!.Id }, result.Document);
     }
 
+    /// <summary>Moves a document to a new lifecycle status.</summary>
+    [HttpPost("{id:guid}/status")]
+    [ProducesResponseType(typeof(DocumentResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ChangeStatus(
+        Guid id, [FromBody] ChangeDocumentStatusRequest request, CancellationToken ct)
+    {
+        var result = await _documents.ChangeStatusAsync(id, request, ct);
+        switch (result.Error)
+        {
+            case ChangeStatusError.NotFound:
+                return Problem(
+                    $"No document with id '{id}' exists.",
+                    statusCode: StatusCodes.Status404NotFound);
+            case ChangeStatusError.InvalidTransition:
+                return Problem(
+                    $"Cannot move from {result.FromStatus} to {request.TargetStatus}.",
+                    statusCode: StatusCodes.Status409Conflict);
+            case ChangeStatusError.MissingRejectionReason:
+                ModelState.AddModelError(
+                    nameof(request.Reason), "A reason is required when rejecting a document.");
+                return ValidationProblem(ModelState);
+            default:
+                return Ok(result.Document);
+        }
+    }
+
     /// <summary>Returns a document with its full version history.</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(DocumentResponse), StatusCodes.Status200OK)]

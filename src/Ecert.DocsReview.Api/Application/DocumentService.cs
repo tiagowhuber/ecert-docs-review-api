@@ -115,6 +115,68 @@ public class DocumentService
         return RegisterDocumentResult.Ok(DocumentResponse.From(document));
     }
 
+    public async Task<ChangeStatusResult> ChangeStatusAsync(
+        Guid id, ChangeDocumentStatusRequest request, CancellationToken ct = default)
+    {
+        var document = await _db.Documents
+            .Include(d => d.Versions)
+            .SingleOrDefaultAsync(d => d.Id == id, ct);
+        if (document is null)
+        {
+            return ChangeStatusResult.NotFound();
+        }
+
+        var target = request.TargetStatus!.Value;
+        if (!DocumentStateMachine.CanTransition(document.Status, target))
+        {
+            return ChangeStatusResult.InvalidTransition(document.Status);
+        }
+        if (target == DocumentStatus.Rejected && string.IsNullOrWhiteSpace(request.Reason))
+        {
+            return ChangeStatusResult.MissingReason();
+        }
+
+        var now = DateTimeOffset.UtcNow;
+
+        if (target == DocumentStatus.Rejected)
+        {
+            var version = document.CurrentVersion!;
+            // Id left unset: setting a key on an entity attached to a tracked
+            // graph makes EF treat it as an update to an existing row.
+            version.Observations.Add(new Observation
+            {
+                Type = ObservationType.RejectionReason,
+                Content = request.Reason!,
+                CreatedBy = request.PerformedBy,
+                CreatedAt = now,
+            });
+            document.Events.Add(new DocumentEvent
+            {
+                EventType = DocumentEventType.ObservationAdded,
+                Details = $"Rejection reason recorded on version {version.VersionNumber}.",
+                PerformedBy = request.PerformedBy,
+                OccurredAt = now,
+            });
+        }
+
+        var from = document.Status;
+        document.Status = target;
+        document.UpdatedAt = now;
+        document.Events.Add(new DocumentEvent
+        {
+            EventType = DocumentEventType.StatusChanged,
+            FromStatus = from,
+            ToStatus = target,
+            Details = request.Details ?? $"Status changed from {from} to {target}.",
+            PerformedBy = request.PerformedBy,
+            OccurredAt = now,
+        });
+
+        await _db.SaveChangesAsync(ct);
+
+        return ChangeStatusResult.Ok(DocumentResponse.From(document));
+    }
+
     public async Task<DocumentResponse?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var document = await _db.Documents

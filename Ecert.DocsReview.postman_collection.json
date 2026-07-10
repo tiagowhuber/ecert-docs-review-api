@@ -172,6 +172,188 @@
       ]
     },
     {
+      "name": "Status transitions",
+      "item": [
+        {
+          "name": "Submit for review (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('document is PendingReview', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('PendingReview');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetStatus\": \"PendingReview\",\n  \"performedBy\": \"tiago\",\n  \"details\": \"Submitted for review\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}", "status"]
+            },
+            "description": "Moves the registered document from Created to PendingReview. Valid target statuses depend on the current status (state machine): Created -> PendingReview -> UnderReview -> Approved | Rejected; Approved -> Archived; Rejected -> PendingReview | Archived.\n\nRun the Status transitions requests in order after Register: they walk the document Created -> PendingReview -> UnderReview -> Rejected."
+          }
+        },
+        {
+          "name": "Start review (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('document is UnderReview', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('UnderReview');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetStatus\": \"UnderReview\",\n  \"performedBy\": \"maria.reviewer\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}", "status"]
+            },
+            "description": "PendingReview -> UnderReview. `details` is optional; when omitted the audit event gets a default note."
+          }
+        },
+        {
+          "name": "Reject without reason (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetStatus\": \"Rejected\",\n  \"performedBy\": \"maria.reviewer\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}", "status"]
+            },
+            "description": "Rejecting requires a `reason` -> 400 'A reason is required when rejecting a document.' The document must be UnderReview (an illegal reject would be 409 instead)."
+          }
+        },
+        {
+          "name": "Reject with reason (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('document is Rejected', function () {",
+                  "  pm.expect(pm.response.json().status).to.eql('Rejected');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetStatus\": \"Rejected\",\n  \"performedBy\": \"maria.reviewer\",\n  \"reason\": \"Totals on page 2 do not match the annex.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}", "status"]
+            },
+            "description": "UnderReview -> Rejected. The `reason` is stored as a RejectionReason observation on the current version, alongside ObservationAdded and StatusChanged audit events. Check with 'Get document by id'."
+          }
+        },
+        {
+          "name": "Invalid transition (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetStatus\": \"Approved\",\n  \"performedBy\": \"maria.reviewer\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}", "status"]
+            },
+            "description": "A Rejected document cannot be Approved directly -> 409 ProblemDetails 'Cannot move from Rejected to Approved.' (Rejected can only go to PendingReview or Archived.)"
+          }
+        },
+        {
+          "name": "Change status unknown id (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetStatus\": \"PendingReview\",\n  \"performedBy\": \"tiago\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/11111111-1111-1111-1111-111111111111/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "11111111-1111-1111-1111-111111111111", "status"]
+            },
+            "description": "Unknown id returns a 404 ProblemDetails body."
+          }
+        }
+      ]
+    },
+    {
       "name": "Validation (expected failures)",
       "item": [
         {
