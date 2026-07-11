@@ -65,6 +65,18 @@ public class DocumentStateMachineTests
         Assert.Equal(expected, DocumentStateMachine.CanUploadVersion(status));
     }
 
+    [Theory]
+    [InlineData(DocumentStatus.PendingReview, true)]
+    [InlineData(DocumentStatus.UnderReview, true)]
+    [InlineData(DocumentStatus.Rejected, true)]
+    [InlineData(DocumentStatus.Created, false)]
+    [InlineData(DocumentStatus.Approved, false)]
+    [InlineData(DocumentStatus.Archived, false)]
+    public void CanAddObservation_OnlyAllowedInReviewStates(DocumentStatus status, bool expected)
+    {
+        Assert.Equal(expected, DocumentStateMachine.CanAddObservation(status));
+    }
+
     [Fact]
     public void StatusAfterVersionUpload_RejectedGoesBackToPendingReview()
     {

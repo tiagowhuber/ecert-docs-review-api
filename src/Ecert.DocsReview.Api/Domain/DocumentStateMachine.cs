@@ -25,6 +25,15 @@ public static class DocumentStateMachine
         status is DocumentStatus.Created or DocumentStatus.PendingReview or DocumentStatus.Rejected;
 
     /// <summary>
+    /// Observations are review artifacts, so they can only be recorded while
+    /// the document is in the review loop.
+    /// </summary>
+    public static bool CanAddObservation(DocumentStatus status) =>
+        status is DocumentStatus.PendingReview
+            or DocumentStatus.UnderReview
+            or DocumentStatus.Rejected;
+
+    /// <summary>
     /// Status the document ends up in after a successful version upload:
     /// a rejected document re-enters the review queue.
     /// </summary>

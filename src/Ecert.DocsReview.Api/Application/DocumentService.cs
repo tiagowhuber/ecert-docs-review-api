@@ -101,7 +101,7 @@ public class DocumentService
         Guid id, UploadVersionRequest request, CancellationToken ct = default)
     {
         var document = await _db.Documents
-            .Include(d => d.Versions)
+            .Include(d => d.Versions).ThenInclude(v => v.Observations)
             .SingleOrDefaultAsync(d => d.Id == id, ct);
         if (document is null)
         {
@@ -213,7 +213,7 @@ public class DocumentService
         Guid id, ChangeDocumentStatusRequest request, CancellationToken ct = default)
     {
         var document = await _db.Documents
-            .Include(d => d.Versions)
+            .Include(d => d.Versions).ThenInclude(v => v.Observations)
             .SingleOrDefaultAsync(d => d.Id == id, ct);
         if (document is null)
         {
@@ -271,11 +271,83 @@ public class DocumentService
         return ChangeStatusResult.Ok(DocumentResponse.From(document));
     }
 
+    public async Task<AddObservationResult> AddObservationAsync(
+        Guid id, AddObservationRequest request, CancellationToken ct = default)
+    {
+        var document = await _db.Documents
+            .Include(d => d.Versions).ThenInclude(v => v.Observations)
+            .SingleOrDefaultAsync(d => d.Id == id, ct);
+        if (document is null)
+        {
+            return AddObservationResult.NotFound();
+        }
+
+        if (!DocumentStateMachine.CanAddObservation(document.Status))
+        {
+            return AddObservationResult.NotAllowed(document.Status);
+        }
+
+        // Rejection reasons only exist as part of a rejection, so the audit
+        // trail can never show a reason without a matching status change.
+        var type = request.Type!.Value;
+        if (type == ObservationType.RejectionReason)
+        {
+            return AddObservationResult.RejectionReasonNotAllowed();
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var version = document.CurrentVersion!;
+        // Id left unset: setting a key on an entity attached to a tracked
+        // graph makes EF treat it as an update to an existing row.
+        var observation = new Observation
+        {
+            Type = type,
+            Content = request.Content,
+            CreatedBy = request.CreatedBy,
+            CreatedAt = now,
+        };
+        version.Observations.Add(observation);
+        document.Events.Add(new DocumentEvent
+        {
+            EventType = DocumentEventType.ObservationAdded,
+            Details = $"{type} recorded on version {version.VersionNumber}.",
+            PerformedBy = request.CreatedBy,
+            OccurredAt = now,
+        });
+        document.UpdatedAt = now;
+
+        await _db.SaveChangesAsync(ct);
+
+        return AddObservationResult.Ok(
+            ObservationResponse.From(observation, version.VersionNumber));
+    }
+
+    /// <summary>All observations across every version; null means the document does not exist.</summary>
+    public async Task<IReadOnlyList<ObservationResponse>?> GetObservationsAsync(
+        Guid id, CancellationToken ct = default)
+    {
+        var document = await _db.Documents
+            .AsNoTracking()
+            .Include(d => d.Versions).ThenInclude(v => v.Observations)
+            .SingleOrDefaultAsync(d => d.Id == id, ct);
+        if (document is null)
+        {
+            return null;
+        }
+
+        return document.Versions
+            .OrderBy(v => v.VersionNumber)
+            .SelectMany(v => v.Observations
+                .OrderBy(o => o.CreatedAt)
+                .Select(o => ObservationResponse.From(o, v.VersionNumber)))
+            .ToList();
+    }
+
     public async Task<DocumentResponse?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var document = await _db.Documents
             .AsNoTracking()
-            .Include(d => d.Versions)
+            .Include(d => d.Versions).ThenInclude(v => v.Observations)
             .SingleOrDefaultAsync(d => d.Id == id, ct);
 
         return document is null ? null : DocumentResponse.From(document);

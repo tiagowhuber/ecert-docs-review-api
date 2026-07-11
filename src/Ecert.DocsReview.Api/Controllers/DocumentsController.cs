@@ -116,6 +116,49 @@ public class DocumentsController : ControllerBase
         }
     }
 
+    /// <summary>Records an observation (comment or correction request) on the current version.</summary>
+    [HttpPost("{id:guid}/observations")]
+    [ProducesResponseType(typeof(ObservationResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> AddObservation(
+        Guid id, [FromBody] AddObservationRequest request, CancellationToken ct)
+    {
+        var result = await _documents.AddObservationAsync(id, request, ct);
+        switch (result.Error)
+        {
+            case AddObservationError.NotFound:
+                return Problem(
+                    $"No document with id '{id}' exists.",
+                    statusCode: StatusCodes.Status404NotFound);
+            case AddObservationError.NotAllowed:
+                return Problem(
+                    $"Cannot add an observation while the document is {result.CurrentStatus}.",
+                    statusCode: StatusCodes.Status409Conflict);
+            case AddObservationError.RejectionReasonNotAllowed:
+                ModelState.AddModelError(
+                    nameof(request.Type),
+                    "Rejection reasons are recorded by rejecting the document via the status endpoint.");
+                return ValidationProblem(ModelState);
+            default:
+                return CreatedAtAction(
+                    nameof(GetObservations), new { id }, result.Observation);
+        }
+    }
+
+    /// <summary>Lists every observation recorded on the document, across all versions.</summary>
+    [HttpGet("{id:guid}/observations")]
+    [ProducesResponseType(typeof(IReadOnlyList<ObservationResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetObservations(Guid id, CancellationToken ct)
+    {
+        var observations = await _documents.GetObservationsAsync(id, ct);
+        return observations is null
+            ? Problem($"No document with id '{id}' exists.", statusCode: StatusCodes.Status404NotFound)
+            : Ok(observations);
+    }
+
     /// <summary>Returns a document with its full version history.</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(DocumentResponse), StatusCodes.Status200OK)]

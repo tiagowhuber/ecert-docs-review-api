@@ -11,7 +11,8 @@ public record DocumentVersionResponse(
     string Sha256,
     int? PageCount,
     string UploadedBy,
-    DateTimeOffset UploadedAt)
+    DateTimeOffset UploadedAt,
+    IReadOnlyList<ObservationResponse> Observations)
 {
     public static DocumentVersionResponse From(DocumentVersion version) => new(
         version.Id,
@@ -21,5 +22,9 @@ public record DocumentVersionResponse(
         version.Sha256,
         version.PageCount,
         version.UploadedBy,
-        version.UploadedAt);
+        version.UploadedAt,
+        version.Observations
+            .OrderBy(o => o.CreatedAt)
+            .Select(o => ObservationResponse.From(o, version.VersionNumber))
+            .ToList());
 }
