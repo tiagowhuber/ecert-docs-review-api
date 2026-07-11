@@ -34,35 +34,17 @@ public class DocumentService
     public async Task<RegisterDocumentResult> RegisterAsync(
         RegisterDocumentRequest request, CancellationToken ct = default)
     {
-        var file = request.File;
-        if (file.Length == 0)
+        var (bytes, error) = await ReadValidPdfAsync(request.File, ct);
+        if (bytes is null)
         {
-            return RegisterDocumentResult.Fail(RegisterError.EmptyFile);
-        }
-        if (file.Length > MaxFileSizeBytes)
-        {
-            return RegisterDocumentResult.Fail(RegisterError.FileTooLarge);
-        }
-
-        // Buffer once so we can validate, hash, analyze, and store from the
-        // same bytes without re-reading the (forward-only) upload stream.
-        using var buffer = new MemoryStream();
-        await using (var upload = file.OpenReadStream())
-        {
-            await upload.CopyToAsync(buffer, ct);
-        }
-        var bytes = buffer.ToArray();
-
-        if (!HasPdfMagic(bytes))
-        {
-            return RegisterDocumentResult.Fail(RegisterError.NotAPdf);
+            return RegisterDocumentResult.Fail(error);
         }
 
         var now = DateTimeOffset.UtcNow;
         var documentId = Guid.NewGuid();
         var storagePath = _storage.BuildVersionPath(documentId, 1);
 
-        buffer.Position = 0;
+        using var buffer = new MemoryStream(bytes);
         var sizeBytes = await _storage.SaveAsync(storagePath, buffer, ct);
 
         buffer.Position = 0;
@@ -72,7 +54,7 @@ public class DocumentService
         {
             Id = Guid.NewGuid(),
             VersionNumber = 1,
-            FileName = SafeFileName(file.FileName),
+            FileName = SafeFileName(request.File.FileName),
             StoragePath = storagePath,
             FileSizeBytes = sizeBytes,
             Sha256 = Convert.ToHexStringLower(SHA256.HashData(bytes)),
@@ -113,6 +95,118 @@ public class DocumentService
         await _db.SaveChangesAsync(ct);
 
         return RegisterDocumentResult.Ok(DocumentResponse.From(document));
+    }
+
+    public async Task<UploadVersionResult> UploadVersionAsync(
+        Guid id, UploadVersionRequest request, CancellationToken ct = default)
+    {
+        var document = await _db.Documents
+            .Include(d => d.Versions)
+            .SingleOrDefaultAsync(d => d.Id == id, ct);
+        if (document is null)
+        {
+            return UploadVersionResult.NotFound();
+        }
+
+        // State check before file validation: whether an upload is allowed
+        // must not depend on the payload.
+        if (!DocumentStateMachine.CanUploadVersion(document.Status))
+        {
+            return UploadVersionResult.NotAllowed(document.Status);
+        }
+
+        var (bytes, fileError) = await ReadValidPdfAsync(request.File, ct);
+        if (bytes is null)
+        {
+            return UploadVersionResult.Fail(fileError switch
+            {
+                RegisterError.EmptyFile => UploadVersionError.EmptyFile,
+                RegisterError.FileTooLarge => UploadVersionError.FileTooLarge,
+                _ => UploadVersionError.NotAPdf,
+            });
+        }
+
+        var sha256 = Convert.ToHexStringLower(SHA256.HashData(bytes));
+        if (sha256 == document.CurrentVersion!.Sha256)
+        {
+            return UploadVersionResult.Fail(UploadVersionError.DuplicateContent);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var versionNumber = document.Versions.Max(v => v.VersionNumber) + 1;
+        var storagePath = _storage.BuildVersionPath(document.Id, versionNumber);
+
+        using var buffer = new MemoryStream(bytes);
+        var sizeBytes = await _storage.SaveAsync(storagePath, buffer, ct);
+
+        buffer.Position = 0;
+        var analysis = await _analyzer.AnalyzeAsync(buffer, ct);
+
+        var fileName = SafeFileName(request.File.FileName);
+        // Ids left unset: setting a key on an entity attached to a tracked
+        // graph makes EF treat it as an update to an existing row.
+        document.Versions.Add(new DocumentVersion
+        {
+            VersionNumber = versionNumber,
+            FileName = fileName,
+            StoragePath = storagePath,
+            FileSizeBytes = sizeBytes,
+            Sha256 = sha256,
+            PageCount = analysis.PageCount,
+            UploadedBy = request.UploadedBy,
+            UploadedAt = now,
+        });
+        document.Events.Add(new DocumentEvent
+        {
+            EventType = DocumentEventType.VersionUploaded,
+            Details = $"Version {versionNumber} uploaded ({fileName}).",
+            PerformedBy = request.UploadedBy,
+            OccurredAt = now,
+        });
+
+        var newStatus = DocumentStateMachine.StatusAfterVersionUpload(document.Status);
+        if (newStatus != document.Status)
+        {
+            document.Events.Add(new DocumentEvent
+            {
+                EventType = DocumentEventType.StatusChanged,
+                FromStatus = document.Status,
+                ToStatus = newStatus,
+                Details = "New version uploaded; document re-entered the review queue.",
+                PerformedBy = request.UploadedBy,
+                OccurredAt = now,
+            });
+            document.Status = newStatus;
+        }
+
+        document.UpdatedAt = now;
+        await _db.SaveChangesAsync(ct);
+
+        return UploadVersionResult.Ok(DocumentResponse.From(document));
+    }
+
+    /// <summary>Opens the stored PDF for a version; null <paramref name="versionNumber"/> means the current version.</summary>
+    public async Task<GetFileResult> GetVersionFileAsync(
+        Guid id, int? versionNumber, CancellationToken ct = default)
+    {
+        var document = await _db.Documents
+            .AsNoTracking()
+            .Include(d => d.Versions)
+            .SingleOrDefaultAsync(d => d.Id == id, ct);
+        if (document is null)
+        {
+            return GetFileResult.DocumentNotFound();
+        }
+
+        var version = versionNumber is null
+            ? document.CurrentVersion
+            : document.Versions.SingleOrDefault(v => v.VersionNumber == versionNumber);
+        if (version is null)
+        {
+            return GetFileResult.VersionNotFound();
+        }
+
+        return GetFileResult.Ok(_storage.OpenRead(version.StoragePath), version.FileName);
     }
 
     public async Task<ChangeStatusResult> ChangeStatusAsync(
@@ -212,6 +306,34 @@ public class DocumentService
             .OrderByDescending(d => d.CreatedAt)
             .Select(DocumentSummaryResponse.From)
             .ToList();
+    }
+
+    /// <summary>
+    /// Buffers the upload once and runs the shared PDF checks (empty, size,
+    /// %PDF- magic), so callers can validate, hash, analyze, and store from
+    /// the same bytes without re-reading the (forward-only) upload stream.
+    /// Bytes is null exactly when Error is not None.
+    /// </summary>
+    private static async Task<(byte[]? Bytes, RegisterError Error)> ReadValidPdfAsync(
+        IFormFile file, CancellationToken ct)
+    {
+        if (file.Length == 0)
+        {
+            return (null, RegisterError.EmptyFile);
+        }
+        if (file.Length > MaxFileSizeBytes)
+        {
+            return (null, RegisterError.FileTooLarge);
+        }
+
+        using var buffer = new MemoryStream();
+        await using (var upload = file.OpenReadStream())
+        {
+            await upload.CopyToAsync(buffer, ct);
+        }
+        var bytes = buffer.ToArray();
+
+        return HasPdfMagic(bytes) ? (bytes, RegisterError.None) : (null, RegisterError.NotAPdf);
     }
 
     private static bool HasPdfMagic(byte[] bytes) =>

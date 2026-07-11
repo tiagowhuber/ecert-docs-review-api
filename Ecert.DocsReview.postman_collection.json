@@ -354,6 +354,190 @@
       ]
     },
     {
+      "name": "Versions",
+      "item": [
+        {
+          "name": "Upload new version (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201 Created', function () { pm.response.to.have.status(201); });",
+                  "var json = pm.response.json();",
+                  "pm.test('version number increased', function () {",
+                  "  pm.expect(json.currentVersionNumber).to.be.above(1);",
+                  "  pm.expect(json.versions.length).to.eql(json.currentVersionNumber);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "UploadedBy", "value": "tiago", "type": "text" },
+                { "key": "File", "type": "file", "src": null }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/versions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}", "versions"]
+            },
+            "description": "Uploads a new version of the registered document. Select a DIFFERENT .pdf than the one used to register (identical content is rejected with 400).\n\nOnly allowed while the document is Created, PendingReview, or Rejected. Uploading to a Rejected document automatically moves it back to PendingReview (resubmission).\n\nReturns 201 with the updated document; currentVersionNumber is bumped."
+          }
+        },
+        {
+          "name": "Upload identical version (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('mentions identical content', function () {",
+                  "  pm.expect(pm.response.text()).to.include('identical');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "UploadedBy", "value": "tiago", "type": "text" },
+                { "key": "File", "type": "file", "src": null }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/versions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}", "versions"]
+            },
+            "description": "Select the SAME .pdf as the document's current version. The API compares SHA-256 hashes and rejects identical content -> 400 'The uploaded file is identical to the current version.'"
+          }
+        },
+        {
+          "name": "Upload version in invalid state (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "UploadedBy", "value": "tiago", "type": "text" },
+                { "key": "File", "type": "file", "src": null }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/versions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}", "versions"]
+            },
+            "description": "Run 'Submit for review' + 'Start review' first so the document is UnderReview, then send this (any .pdf) -> 409 'Cannot upload a new version while the document is UnderReview.'\n\nNew versions are only accepted while the document is Created, PendingReview, or Rejected."
+          }
+        },
+        {
+          "name": "Download version 1 file (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('content is PDF', function () {",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/pdf');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/versions/1/file",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}", "versions", "1", "file"]
+            },
+            "description": "Streams the stored PDF of version 1 with its original file name. Use 'Send and Download' in Postman to save it and compare with the file you registered."
+          }
+        },
+        {
+          "name": "Download current version file (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('content is PDF', function () {",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/pdf');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/file",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}", "file"]
+            },
+            "description": "Streams the PDF of the CURRENT (highest-numbered) version. After 'Upload new version' this returns the new file, while '/versions/1/file' still returns the original — the version history is immutable."
+          }
+        },
+        {
+          "name": "Download unknown version (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/versions/999/file",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "{{documentId}}", "versions", "999", "file"]
+            },
+            "description": "A version number that doesn't exist -> 404 ProblemDetails."
+          }
+        }
+      ]
+    },
+    {
       "name": "Validation (expected failures)",
       "item": [
         {

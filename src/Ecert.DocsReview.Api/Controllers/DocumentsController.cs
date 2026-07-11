@@ -36,6 +36,57 @@ public class DocumentsController : ControllerBase
             nameof(GetById), new { id = result.Document!.Id }, result.Document);
     }
 
+    /// <summary>Uploads a new version of an existing document.</summary>
+    [HttpPost("{id:guid}/versions")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(DocumentResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> UploadVersion(
+        Guid id, [FromForm] UploadVersionRequest request, CancellationToken ct)
+    {
+        var result = await _documents.UploadVersionAsync(id, request, ct);
+        switch (result.Error)
+        {
+            case UploadVersionError.NotFound:
+                return Problem(
+                    $"No document with id '{id}' exists.",
+                    statusCode: StatusCodes.Status404NotFound);
+            case UploadVersionError.VersionNotAllowed:
+                return Problem(
+                    $"Cannot upload a new version while the document is {result.CurrentStatus}.",
+                    statusCode: StatusCodes.Status409Conflict);
+            case UploadVersionError.None:
+                return CreatedAtAction(
+                    nameof(GetById), new { id = result.Document!.Id }, result.Document);
+            default:
+                ModelState.AddModelError(nameof(request.File), DescribeError(result.Error));
+                return ValidationProblem(ModelState);
+        }
+    }
+
+    /// <summary>Downloads the stored PDF of a specific version.</summary>
+    [HttpGet("{id:guid}/versions/{versionNumber:int}/file")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadVersionFile(
+        Guid id, int versionNumber, CancellationToken ct)
+    {
+        var result = await _documents.GetVersionFileAsync(id, versionNumber, ct);
+        return ToFileResponse(result, id, $"Document '{id}' has no version {versionNumber}.");
+    }
+
+    /// <summary>Downloads the stored PDF of the current (latest) version.</summary>
+    [HttpGet("{id:guid}/file")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DownloadCurrentFile(Guid id, CancellationToken ct)
+    {
+        var result = await _documents.GetVersionFileAsync(id, versionNumber: null, ct);
+        return ToFileResponse(result, id, $"Document '{id}' has no versions.");
+    }
+
     /// <summary>Moves a document to a new lifecycle status.</summary>
     [HttpPost("{id:guid}/status")]
     [ProducesResponseType(typeof(DocumentResponse), StatusCodes.Status200OK)]
@@ -87,12 +138,36 @@ public class DocumentsController : ControllerBase
         return Ok(documents);
     }
 
+    private IActionResult ToFileResponse(GetFileResult result, Guid id, string versionNotFoundDetail)
+    {
+        return result.Error switch
+        {
+            GetFileError.DocumentNotFound => Problem(
+                $"No document with id '{id}' exists.",
+                statusCode: StatusCodes.Status404NotFound),
+            GetFileError.VersionNotFound => Problem(
+                versionNotFoundDetail, statusCode: StatusCodes.Status404NotFound),
+            _ => File(result.Content!, "application/pdf", result.FileName),
+        };
+    }
+
     private static string DescribeError(RegisterError error) => error switch
     {
         RegisterError.EmptyFile => "The uploaded file is empty.",
         RegisterError.FileTooLarge =>
             $"The file exceeds the maximum size of {DocumentService.MaxFileSizeBytes} bytes.",
         RegisterError.NotAPdf => "The uploaded file is not a valid PDF.",
+        _ => "The uploaded file is invalid.",
+    };
+
+    private static string DescribeError(UploadVersionError error) => error switch
+    {
+        UploadVersionError.EmptyFile => "The uploaded file is empty.",
+        UploadVersionError.FileTooLarge =>
+            $"The file exceeds the maximum size of {DocumentService.MaxFileSizeBytes} bytes.",
+        UploadVersionError.NotAPdf => "The uploaded file is not a valid PDF.",
+        UploadVersionError.DuplicateContent =>
+            "The uploaded file is identical to the current version.",
         _ => "The uploaded file is invalid.",
     };
 }
