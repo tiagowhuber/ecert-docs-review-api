@@ -81,6 +81,29 @@ public class DocumentsApiTests : IDisposable
     }
 
     [Fact]
+    public async Task Register_WithParseablePdf_ExtractsPageCount()
+    {
+        using var content = new MultipartFormDataContent
+        {
+            { new StringContent("Two Page Annex"), "Title" },
+            { new StringContent(nameof(DocumentType.Annex)), "Type" },
+            { new StringContent("juan.author"), "UploadedBy" },
+        };
+        var file = new ByteArrayContent(MinimalPdf.Create(pages: 2));
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        content.Add(file, "File", "annex.pdf");
+
+        var response = await _client.PostAsync("/api/documents", content);
+        response.EnsureSuccessStatusCode();
+        var created = await ReadJsonAsync<DocumentDto>(response);
+
+        var detail = await ReadJsonAsync<DocumentDto>(
+            await _client.GetAsync($"/api/documents/{created.Id}"));
+        var version = Assert.Single(detail.Versions);
+        Assert.Equal(2, version.PageCount);
+    }
+
+    [Fact]
     public async Task Register_WithNonPdfFile_Returns400()
     {
         using var content = new MultipartFormDataContent
@@ -193,7 +216,7 @@ public class DocumentsApiTests : IDisposable
         int? CurrentVersionNumber,
         List<VersionDto> Versions);
 
-    private record VersionDto(int VersionNumber, string FileName);
+    private record VersionDto(int VersionNumber, string FileName, int? PageCount);
 
     private record DocumentSummaryDto(Guid Id, string Title, string Status);
 }

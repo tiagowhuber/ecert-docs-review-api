@@ -33,7 +33,7 @@ if (!builder.Environment.IsEnvironment("Testing"))
 builder.Services.Configure<StorageOptions>(
     builder.Configuration.GetSection(StorageOptions.SectionName));
 builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
-builder.Services.AddSingleton<IPdfAnalyzer, NullPdfAnalyzer>();
+builder.Services.AddSingleton<IPdfAnalyzer, PdfPigAnalyzer>();
 builder.Services.AddScoped<DocumentService>();
 
 builder.Services.AddHealthChecks()

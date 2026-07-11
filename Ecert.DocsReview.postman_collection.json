@@ -118,7 +118,7 @@
                 "documents"
               ]
             },
-            "description": "Registers a new document plus its first PDF version (multipart/form-data).\n\nBEFORE SENDING: in Body > form-data, set the `File` row's type to 'File' (dropdown on the key) and select a real .pdf.\n\nValid `Type` values: Contract, Annex, Quotation, Report, Other.\n\nDo NOT add a Content-Type header manually \u2014 Postman sets the multipart boundary for you.\n\nOn success returns 201 + Location header; the test script saves the new id into the `documentId` variable for the Consult requests."
+            "description": "Registers a new document plus its first PDF version (multipart/form-data).\n\nBEFORE SENDING: in Body > form-data, set the `File` row's type to 'File' (dropdown on the key) and select a real .pdf.\n\nValid `Type` values: Contract, Annex, Quotation, Report, Other.\n\nDo NOT add a Content-Type header manually \u2014 Postman sets the multipart boundary for you.\n\nOn success returns 201 + Location header; the test script saves the new id into the `documentId` variable for the Consult requests. The uploaded PDF is analyzed with PdfPig on the server; a parseable file gets its real page count stored on the version (pageCount in responses), an unparseable one is stored with pageCount null."
           }
         }
       ]

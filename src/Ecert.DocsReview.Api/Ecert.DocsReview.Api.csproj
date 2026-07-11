@@ -16,6 +16,7 @@
     </PackageReference>
     <PackageReference Include="Microsoft.OpenApi" Version="2.7.6" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
+    <PackageReference Include="UglyToad.PdfPig" Version="1.7.0-custom-5" />
   </ItemGroup>
 
 </Project>
