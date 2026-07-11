@@ -159,6 +159,18 @@ public class DocumentsController : ControllerBase
             : Ok(observations);
     }
 
+    /// <summary>Returns the document's audit trail: every event from creation onward.</summary>
+    [HttpGet("{id:guid}/history")]
+    [ProducesResponseType(typeof(IReadOnlyList<DocumentEventResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetHistory(Guid id, CancellationToken ct)
+    {
+        var events = await _documents.GetHistoryAsync(id, ct);
+        return events is null
+            ? Problem($"No document with id '{id}' exists.", statusCode: StatusCodes.Status404NotFound)
+            : Ok(events);
+    }
+
     /// <summary>Returns a document with its full version history.</summary>
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(DocumentResponse), StatusCodes.Status200OK)]

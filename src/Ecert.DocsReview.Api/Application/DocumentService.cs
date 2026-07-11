@@ -343,6 +343,29 @@ public class DocumentService
             .ToList();
     }
 
+    /// <summary>The document's full audit trail; null means the document does not exist.</summary>
+    public async Task<IReadOnlyList<DocumentEventResponse>?> GetHistoryAsync(
+        Guid id, CancellationToken ct = default)
+    {
+        var document = await _db.Documents
+            .AsNoTracking()
+            .Include(d => d.Events)
+            .SingleOrDefaultAsync(d => d.Id == id, ct);
+        if (document is null)
+        {
+            return null;
+        }
+
+        // Ordered in memory: SQLite (used by the integration tests) can't
+        // ORDER BY a DateTimeOffset. Id breaks ties for events written in the
+        // same transaction, which share one timestamp.
+        return document.Events
+            .OrderBy(e => e.OccurredAt)
+            .ThenBy(e => e.Id)
+            .Select(DocumentEventResponse.From)
+            .ToList();
+    }
+
     public async Task<DocumentResponse?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var document = await _db.Documents

@@ -786,6 +786,85 @@
       ]
     },
     {
+      "name": "History",
+      "item": [
+        {
+          "name": "Get document history (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('trail covers creation, status changes and observations', function () {",
+                  "  const types = pm.response.json().map(e => e.eventType);",
+                  "  pm.expect(types).to.include('DocumentCreated');",
+                  "  pm.expect(types).to.include('VersionUploaded');",
+                  "  pm.expect(types).to.include('StatusChanged');",
+                  "  pm.expect(types).to.include('ObservationAdded');",
+                  "});",
+                  "pm.test('events are in chronological order', function () {",
+                  "  const times = pm.response.json().map(e => new Date(e.occurredAt).getTime());",
+                  "  const sorted = [...times].sort((a, b) => a - b);",
+                  "  pm.expect(times).to.eql(sorted);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/{{documentId}}/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "documents",
+                "{{documentId}}",
+                "history"
+              ]
+            },
+            "description": "The document's complete audit trail. Run after the Status transitions and Observations folders so the trail includes registration, every status hop with from/to, and each ObservationAdded entry."
+          }
+        },
+        {
+          "name": "Get history unknown id (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/00000000-0000-0000-0000-000000000000/history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "documents",
+                "00000000-0000-0000-0000-000000000000",
+                "history"
+              ]
+            },
+            "description": "Unknown document id returns a 404 problem response."
+          }
+        }
+      ]
+    },
+    {
       "name": "Versions",
       "item": [
         {
