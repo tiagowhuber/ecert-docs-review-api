@@ -18,6 +18,8 @@
     userPicked: false,     // has the examiner clicked a row themselves?
     seen: { docs: {}, versions: {}, events: {} }, // id -> true, for new-row diff
     firstRender: { docs: true, versions: true, events: true },
+    lastDoc: null,         // last fetched detail for the selected document
+    flow: { busy: false, error: null, confirmingReject: false, docId: null, trace: null },
   };
 
   // ---------- helpers ----------
@@ -68,6 +70,7 @@
         "</div>" +
         '<div class="ecert-grid">' +
           card("docs", "Documents", "") +
+          card("flow", "Review flow", "Select a document") +
           '<div class="ecert-grid__row2">' +
             card("versions", "Document versions", "Select a document") +
             card("events", "Events", "Select a document") +
@@ -142,8 +145,16 @@
     body.innerHTML = '<table class="ecert-table"><thead>' + head + "</thead><tbody>" + trs + "</tbody></table>";
 
     if (opts.clickable) {
-      body.querySelectorAll("tbody tr").forEach(function (tr) {
-        tr.addEventListener("click", function () { opts.onClick(tr.getAttribute("data-id")); });
+      var rows_ = body.querySelectorAll("tbody tr");
+      rows_.forEach(function (tr) {
+        tr.addEventListener("click", function () {
+          // Move the highlight now, synchronously — don't wait for the next
+          // 3s poll tick to confirm which row was picked. The detail panels
+          // (versions/events/flow) update separately, on their own fetch.
+          rows_.forEach(function (r) { r.classList.remove("is-active"); });
+          tr.classList.add("is-active");
+          opts.onClick(tr.getAttribute("data-id"));
+        });
       });
     }
   }
@@ -197,11 +208,18 @@
 
   function refreshDetail() {
     var id = state.activeId;
+    // A freshly selected document starts with a clean flow panel: no stale
+    // busy/error/confirm state left over from the previous one.
+    if (state.flow.docId !== id) {
+      state.flow = { busy: false, error: null, confirmingReject: false, docId: id, trace: null };
+    }
     if (!id) {
       renderTable("versions", [], [], { empty: "Select a document." });
       renderTable("events", [], [], { empty: "Select a document." });
       setSub("versions", "Select a document");
       setSub("events", "Select a document");
+      setSub("flow", "Select a document");
+      renderFlow(null);
       return Promise.resolve();
     }
     return Promise.all([
@@ -212,6 +230,8 @@
       var title = doc.title.length > 28 ? doc.title.slice(0, 27) + "…" : doc.title;
       setSub("versions", title);
       setSub("events", title);
+      setSub("flow", title);
+      renderFlow(doc);
 
       var isCurrent = doc.currentVersionNumber;
       renderList("versions", (doc.versions || []).map(function (v) { v._id = v.id; return v; }), {
@@ -263,6 +283,243 @@
 
   function prettyEvent(t) {
     return String(t).replace(/([a-z])([A-Z])/g, "$1 $2");
+  }
+
+  // ---------- review-flow stepper ----------
+  // A click-through version of the demo storyline (POST .../status,
+  // .../observations, .../versions): submit → take for review → reject (with
+  // observation) or approve → upload corrected version → approve, without
+  // hand-filling Swagger's Try-it-out forms each time.
+  var FLOW_STEPS = ["Created", "PendingReview", "UnderReview", "Approved"];
+  var PERSONA = { author: "juan.author", reviewer: "maria.reviewer" };
+  // Same wording as the "Paso 5" example in StorylineOpenApi so the two
+  // demo paths (guided Swagger form vs. one-click flow) tell one story.
+  var REJECT_REASON = "Corregir plazo y precio antes de reenviar.";
+
+  function errorMessage(body, status) {
+    if (body && body.errors) {
+      var msgs = [];
+      Object.keys(body.errors).forEach(function (k) {
+        (body.errors[k] || []).forEach(function (m) { msgs.push(m); });
+      });
+      if (msgs.length) return msgs.join(" ");
+    }
+    return (body && (body.detail || body.title)) || ("Request failed (" + status + ")");
+  }
+
+  // Fires the HTTP call and resolves { status, body } on success; on failure
+  // throws an Error carrying .status/.body so the trace panel can show the
+  // real response either way (not just the happy path).
+  function request(method, url, opts) {
+    opts = opts || {};
+    var init = { method: method };
+    if (opts.json) {
+      init.headers = { "Content-Type": "application/json", Accept: "application/json" };
+      init.body = JSON.stringify(opts.json);
+    } else if (opts.form) {
+      init.body = opts.form; // browser sets the multipart boundary itself
+    }
+    return fetch(url, init).then(function (r) {
+      return r.json().catch(function () { return null; }).then(function (body) {
+        if (!r.ok) {
+          var err = new Error(errorMessage(body, r.status));
+          err.status = r.status;
+          err.body = body;
+          throw err;
+        }
+        return { status: r.status, body: body };
+      });
+    });
+  }
+
+  // Builds the { method, path, displayBody, exec } descriptor for a status
+  // change, so the trace panel can show the exact route/body before exec()
+  // is even called.
+  function buildStatusAction(id, targetStatus, performedBy, reason) {
+    var payload = { targetStatus: targetStatus, performedBy: performedBy };
+    if (reason) payload.reason = reason;
+    var path = API + "/" + id + "/status";
+    return {
+      method: "POST",
+      path: path,
+      displayBody: JSON.stringify(payload, null, 2),
+      exec: function () { return request("POST", path, { json: payload }); },
+    };
+  }
+
+  function buildUploadAction(id, uploadedBy) {
+    // Mirrors DataSeeder.CreateMinimalPdf / attachSampleTo: a tiny but valid
+    // PDF, unique per call so it's never rejected as a byte-identical dupe.
+    var text = "ecert sample document " + Date.now();
+    var file = new File([buildSamplePdf(text)], "ecert-sample.pdf", { type: "application/pdf" });
+    var form = new FormData();
+    form.append("UploadedBy", uploadedBy);
+    form.append("File", file);
+    var path = API + "/" + id + "/versions";
+    return {
+      method: "POST",
+      path: path,
+      displayBody: "UploadedBy: " + uploadedBy + "\nFile: " + file.name + " (" + file.size + " bytes, multipart/form-data)",
+      exec: function () { return request("POST", path, { form: form }); },
+    };
+  }
+
+  function runFlowAction(action) {
+    if (state.flow.busy) return;
+    state.flow.busy = true;
+    state.flow.error = null;
+    state.flow.trace = {
+      method: action.method,
+      path: action.path,
+      requestBody: action.displayBody,
+      status: null,
+      responseBody: null,
+    };
+    rerenderFlow();
+    action.exec().then(function (result) {
+      state.flow.busy = false;
+      state.flow.confirmingReject = false;
+      state.flow.trace.status = result.status;
+      state.flow.trace.responseBody = result.body ? JSON.stringify(result.body, null, 2) : "(empty body)";
+      return refreshDocuments(); // pulls the fresh status into every panel right away
+    }).catch(function (err) {
+      state.flow.busy = false;
+      state.flow.error = err.message || "Request failed.";
+      state.flow.trace.status = err.status || null;
+      state.flow.trace.responseBody = err.body ? JSON.stringify(err.body, null, 2) : null;
+      rerenderFlow();
+    });
+  }
+
+  function rerenderFlow() {
+    renderFlow(state.lastDoc);
+  }
+
+  function flowActionsHtml(doc) {
+    var disabled = state.flow.busy ? " disabled" : "";
+    var html;
+    switch (doc.status) {
+      case "Created":
+        html = '<button class="ecert-flow__btn" data-act="submit"' + disabled + '>Submit for review</button>';
+        break;
+      case "PendingReview":
+        html = '<button class="ecert-flow__btn" data-act="take"' + disabled + '>Take for review</button>';
+        break;
+      case "UnderReview":
+        if (state.flow.confirmingReject) {
+          html =
+            '<div class="ecert-flow__confirm">' +
+              '<span class="ecert-flow__reason">“' + esc(REJECT_REASON) + '”</span>' +
+              '<button class="ecert-flow__btn ecert-flow__btn--danger" data-act="reject-confirm"' + disabled + '>Confirm reject</button>' +
+              '<button class="ecert-flow__btn ecert-flow__btn--ghost" data-act="reject-cancel"' + disabled + '>Cancel</button>' +
+            "</div>";
+        } else {
+          html =
+            '<button class="ecert-flow__btn ecert-flow__btn--primary" data-act="approve"' + disabled + '>Approve</button>' +
+            '<button class="ecert-flow__btn ecert-flow__btn--danger" data-act="reject"' + disabled + '>Reject…</button>';
+        }
+        break;
+      case "Rejected":
+        html = '<button class="ecert-flow__btn" data-act="upload"' + disabled + '>Upload corrected version</button>';
+        break;
+      case "Approved":
+        html = '<span class="ecert-muted">Approved — flow complete.</span>';
+        break;
+      default:
+        html = '<span class="ecert-muted">' + esc(prettyEvent(doc.status)) + "</span>";
+    }
+    if (state.flow.error) {
+      html += '<div class="ecert-flow__error">' + esc(state.flow.error) + "</div>";
+    }
+    return html;
+  }
+
+  function wireFlowActions(doc) {
+    var body = bodyOf("flow");
+    if (!body) return;
+    var id = doc.id;
+    // Each entry builds a fresh action descriptor per click (the upload one
+    // needs a new sample file/timestamp every time).
+    var actions = {
+      submit: function () { return buildStatusAction(id, "PendingReview", PERSONA.author); },
+      take: function () { return buildStatusAction(id, "UnderReview", PERSONA.reviewer); },
+      approve: function () { return buildStatusAction(id, "Approved", PERSONA.reviewer); },
+      "reject-confirm": function () { return buildStatusAction(id, "Rejected", PERSONA.reviewer, REJECT_REASON); },
+      upload: function () { return buildUploadAction(id, PERSONA.author); },
+    };
+    body.querySelectorAll("[data-act]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var act = btn.getAttribute("data-act");
+        if (act === "reject") {
+          state.flow.confirmingReject = true;
+          state.flow.error = null;
+          return rerenderFlow();
+        }
+        if (act === "reject-cancel") {
+          state.flow.confirmingReject = false;
+          return rerenderFlow();
+        }
+        if (actions[act]) runFlowAction(actions[act]());
+      });
+    });
+  }
+
+  // Renders the "<method> <path>" line plus the request/response JSON side by
+  // side, so the examiner sees exactly what the click just did over HTTP.
+  function traceHtml(trace) {
+    if (!trace) return "";
+    var methodCls = "ecert-flow__method ecert-flow__method--" + trace.method.toLowerCase();
+    var statusHtml = trace.status == null
+      ? '<span class="ecert-flow__status is-pending">sending…</span>'
+      : '<span class="ecert-flow__status' + (trace.status >= 400 ? " is-error" : " is-ok") + '">' + trace.status + "</span>";
+    return (
+      '<div class="ecert-flow__trace">' +
+        '<div class="ecert-flow__route">' +
+          '<span class="' + methodCls + '">' + esc(trace.method) + "</span>" +
+          '<span class="ecert-mono">' + esc(trace.path) + "</span>" +
+        "</div>" +
+        '<div class="ecert-flow__io">' +
+          '<div class="ecert-flow__block">' +
+            '<div class="ecert-flow__blocklabel">Body</div>' +
+            '<pre class="ecert-flow__pre">' + esc(trace.requestBody || "—") + "</pre>" +
+          "</div>" +
+          '<div class="ecert-flow__block">' +
+            '<div class="ecert-flow__blocklabel">Response ' + statusHtml + "</div>" +
+            '<pre class="ecert-flow__pre">' + esc(trace.responseBody || "") + "</pre>" +
+          "</div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  // Renders the step pills (dimmed except the current one) plus the button(s)
+  // for whatever transition is valid from here, per DocumentStateMachine.
+  function renderFlow(doc) {
+    state.lastDoc = doc;
+    var body = bodyOf("flow");
+    if (!body) return;
+    if (!doc) {
+      body.innerHTML = '<div class="ecert-empty">Select a document.</div>';
+      return;
+    }
+
+    var stepsHtml = FLOW_STEPS.map(function (s) {
+      var cls = "ecert-pill ecert-pill--" + s + (s === doc.status ? " is-current-step" : " is-dim");
+      return '<span class="' + cls + '">' + esc(prettyEvent(s)) + "</span>";
+    }).join('<span class="ecert-arrow">→</span>');
+    if (doc.status === "Rejected") {
+      stepsHtml += '<span class="ecert-arrow">→</span>' +
+        '<span class="ecert-pill ecert-pill--Rejected is-current-step">Rejected</span>';
+    }
+
+    body.innerHTML =
+      '<div class="ecert-flow">' +
+        '<div class="ecert-flow__steps">' + stepsHtml + "</div>" +
+        '<div class="ecert-flow__actions">' + flowActionsHtml(doc) + "</div>" +
+        traceHtml(state.flow.trace) +
+      "</div>";
+
+    wireFlowActions(doc);
   }
 
   // Colour the timeline dot by the status the event landed on; fall back to a

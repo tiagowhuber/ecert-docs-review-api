@@ -30,11 +30,9 @@ public static class StorylineOpenApi
     {
         document.Info.Title = "ecert Document Review API";
         document.Info.Description =
-            "Los endpoints están ordenados como un tour por el ciclo de vida del documento, " +
-            "y cada uno trae sus bodies pre-armados: en los endpoints JSON use el desplegable " +
-            "'Examples' de 'Try it out' para elegir el paso de la historia; en los uploads " +
-            "se adjunta un PDF de ejemplo automáticamente (o reemplácelo por uno de la carpeta " +
-            "`samples/` del repositorio).";
+            "Los endpoints están ordenados por el ciclo de vida del documento, " +
+            "y cada uno trae sus bodies pre-armados" +
+            "se adjunta un PDF de ejemplo automáticamente";
 
         var ordered = document.Paths
             .OrderBy(p =>
