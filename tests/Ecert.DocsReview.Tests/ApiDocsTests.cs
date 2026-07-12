@@ -83,16 +83,19 @@ public class ApiDocsTests : IDisposable
     }
 
     [Fact]
-    public async Task OpenApiDocument_OrdersTheStoryline_Paso0BeforePaso1()
+    public async Task OpenApiDocument_OmitsListOperation_KeepsCreate()
     {
         var json = await _client.GetStringAsync("/openapi/v1.json");
 
-        // Swagger UI renders operations in document order, so the tour must
-        // open with Paso 0 (GET /api/documents) above Paso 1 (POST).
-        var paso0 = json.IndexOf("Paso 0", StringComparison.Ordinal);
-        var paso1 = json.IndexOf("Paso 1", StringComparison.Ordinal);
-        Assert.True(paso0 >= 0 && paso1 >= 0, "both Paso 0 and Paso 1 must be present");
-        Assert.True(paso0 < paso1, "Paso 0 must appear before Paso 1 in the document");
+        // The live dashboard already lists documents, so GET /api/documents is
+        // dropped from the docs; POST (create) stays.
+        using var doc = JsonDocument.Parse(json);
+        var verbs = doc.RootElement
+            .GetProperty("paths").GetProperty("/api/documents")
+            .EnumerateObject().Select(p => p.Name).ToList();
+
+        Assert.DoesNotContain("get", verbs);
+        Assert.Contains("post", verbs);
     }
 
     /// <summary>The `Type` form field of POST /api/documents in the OpenAPI JSON.</summary>

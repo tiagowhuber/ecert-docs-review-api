@@ -6,6 +6,7 @@ using Ecert.DocsReview.Api.Infrastructure.Storage;
 using Ecert.DocsReview.Api.Infrastructure.OpenApi;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.EntityFrameworkCore;
+using Swashbuckle.AspNetCore.SwaggerUI;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -77,11 +78,28 @@ if (!app.Environment.IsEnvironment("Testing"))
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
+// Serve the Swagger UI customizations (ecert.css / ecert.js under wwwroot).
+app.UseStaticFiles();
+
 // API docs are part of the deliverable (the examiner explores the API through
 // them), so they are exposed in every environment, not just Development.
 app.MapOpenApi();
 app.UseSwaggerUI(options =>
-    options.SwaggerEndpoint("/openapi/v1.json", "ecert Document Review API"));
+{
+    options.SwaggerEndpoint("/openapi/v1.json", "ecert Document Review API");
+    options.DocumentTitle = "ecert Document Review — Console";
+    // Try-it-out is on by default: pre-filled examples plus the injected file
+    // mean the examiner only has to press Execute.
+    options.EnableTryItOutByDefault();
+    // Hide the Schemas/models dump at the bottom and keep operations collapsed
+    // so the page reads as a task list, not a spec.
+    options.DefaultModelsExpandDepth(-1);
+    options.DefaultModelExpandDepth(1);
+    options.DocExpansion(DocExpansion.List);
+    // Playful restyle + the live documents/versions/events dashboard.
+    options.InjectStylesheet("/swagger-ui/ecert.css");
+    options.InjectJavascript("/swagger-ui/ecert.js");
+});
 
 app.UseHttpsRedirection();
 

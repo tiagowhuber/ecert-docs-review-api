@@ -19,7 +19,7 @@ Eso levanta PostgreSQL y la API; al arrancar, la API **aplica migraciones y siem
 
 ## Demo / Tour guiado
 
-- **Swagger UI**: abrir <http://localhost:8080/swagger>. Los endpoints están ordenados como un tour por el ciclo de vida y cada uno cuenta su paso de la historia. Los bodies vienen pre-armados: en los endpoints JSON, "Try it out" trae un desplegable **Examples** con cada paso listo para enviar ("Paso 2 — Enviar a revisión", "Paso 5 — Rechazar con motivo", …); en los uploads, los campos ya están pre-cargados y solo hay que seleccionar los PDF de `samples/`.
+- **Swagger UI (consola)**: abrir <http://localhost:8080/swagger>. La página está simplificada y arriba muestra un **dashboard en vivo** con tres tablas —**Documentos**, **Versiones** y **Eventos**— que se refrescan solas y resaltan las filas nuevas a medida que ejecutás cada operación (hacé clic en un documento para ver sus versiones y eventos). Los endpoints están ordenados como un tour por el ciclo de vida y los bodies vienen pre-armados: "Try it out" ya está activado y en los endpoints JSON el desplegable **Examples** trae cada paso listo ("Paso 2 — Enviar a revisión", "Paso 5 — Rechazar con motivo", …). En los uploads se adjunta automáticamente un PDF de ejemplo válido, así que **basta con presionar Execute** (o reemplazarlo por un PDF propio, p. ej. los de `samples/`).
 - **Postman**: importar `Ecert.DocsReview.postman_collection.json`. Las carpetas están ordenadas como tour (registro → consulta → estados → observaciones → historial → versiones → validaciones) e incluyen casos de éxito y de error; para los requests con archivo, seleccionar los PDF de `samples/`.
 
 ## Ciclo de vida del documento

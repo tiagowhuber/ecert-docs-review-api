@@ -33,7 +33,8 @@ public static class StorylineOpenApi
             "Los endpoints están ordenados como un tour por el ciclo de vida del documento, " +
             "y cada uno trae sus bodies pre-armados: en los endpoints JSON use el desplegable " +
             "'Examples' de 'Try it out' para elegir el paso de la historia; en los uploads " +
-            "seleccione los PDF de la carpeta `samples/` del repositorio.";
+            "se adjunta un PDF de ejemplo automáticamente (o reemplácelo por uno de la carpeta " +
+            "`samples/` del repositorio).";
 
         var ordered = document.Paths
             .OrderBy(p =>
@@ -47,34 +48,18 @@ public static class StorylineOpenApi
         {
             document.Paths[path] = item;
         }
-        PutListBeforeCreate(document);
+
+        // The live dashboard already lists every document (including the seeded
+        // ones shown on startup), so GET /api/documents is redundant in the
+        // tour. Drop the operation from the docs; the endpoint still exists and
+        // the dashboard calls it directly.
+        if (document.Paths.TryGetValue("/api/documents", out var docsPath)
+            && docsPath.Operations is { } docsOperations)
+        {
+            docsOperations.Remove(HttpMethod.Get);
+        }
 
         return Task.CompletedTask;
-    }
-
-    /// <summary>
-    /// Swagger UI renders operations in document order and the generator emits
-    /// POST /api/documents before GET, which would open the tour with Paso 1
-    /// above Paso 0. Only that path needs flipping: in the other multi-verb
-    /// path (observations) the generated POST-first order already matches the
-    /// storyline (Paso 4 before Paso 9).
-    /// </summary>
-    private static void PutListBeforeCreate(OpenApiDocument document)
-    {
-        if (!document.Paths.TryGetValue("/api/documents", out var item)
-            || item.Operations is not { } operations
-            || !operations.TryGetValue(HttpMethod.Get, out var list))
-        {
-            return;
-        }
-
-        var rest = operations.Where(o => o.Key != HttpMethod.Get).ToArray();
-        operations.Clear();
-        operations[HttpMethod.Get] = list;
-        foreach (var (method, operation) in rest)
-        {
-            operations[method] = operation;
-        }
     }
 
     public static Task TransformOperationAsync(
@@ -83,17 +68,12 @@ public static class StorylineOpenApi
         var key = $"{context.Description.HttpMethod} {context.Description.RelativePath?.TrimEnd('/')}";
         switch (key)
         {
-            case "GET api/documents":
-                Describe(operation,
-                    "Paso 0 — Antes de empezar: los documentos sembrados muestran distintas " +
-                    "etapas del ciclo de vida (PendingReview, Rejected con dos versiones, Approved).");
-                break;
-
             case "POST api/documents":
                 Describe(operation,
                     "Paso 1 — Registre el documento con su primera versión. Los campos ya vienen " +
-                    "pre-cargados; en `File` seleccione `samples/contrato-v1.pdf` (el navegador no " +
-                    "permite pre-cargar archivos). La respuesta incluye `pageCount` calculado con " +
+                    "pre-cargados y en `File` se adjunta un PDF de ejemplo automáticamente, así que " +
+                    "basta con presionar Execute (o reemplazarlo por un PDF propio, p. ej. " +
+                    "`samples/contrato-v1.pdf`). La respuesta incluye `pageCount` calculado con " +
                     "PdfPig; guarde el `id` para los pasos siguientes.");
                 SetFormFieldExamples(operation, new Dictionary<string, string>
                 {
@@ -169,9 +149,9 @@ public static class StorylineOpenApi
 
             case "POST api/documents/{id}/versions":
                 Describe(operation,
-                    "Paso 6 — El autor sube la versión corregida: seleccione " +
-                    "`samples/contrato-v2.pdf` en `File`. Un documento rechazado vuelve " +
-                    "automáticamente a PendingReview; un archivo idéntico al vigente devuelve 400.");
+                    "Paso 6 — El autor sube la versión corregida: `File` ya trae un PDF de ejemplo " +
+                    "adjunto (o reemplácelo por `samples/contrato-v2.pdf`). Un documento rechazado " +
+                    "vuelve automáticamente a PendingReview; un archivo idéntico al vigente devuelve 400.");
                 SetFormFieldExamples(operation, new Dictionary<string, string>
                 {
                     ["UploadedBy"] = "juan.author",
