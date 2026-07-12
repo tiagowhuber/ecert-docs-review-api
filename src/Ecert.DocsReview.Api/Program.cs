@@ -3,8 +3,9 @@ using Ecert.DocsReview.Api.Application;
 using Ecert.DocsReview.Api.Infrastructure;
 using Ecert.DocsReview.Api.Infrastructure.Pdf;
 using Ecert.DocsReview.Api.Infrastructure.Storage;
+using Ecert.DocsReview.Api.Infrastructure.OpenApi;
+using Microsoft.AspNetCore.OpenApi;
 using Microsoft.EntityFrameworkCore;
-using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,8 +17,24 @@ builder.Services
     // integers, matching how they are stored and keeping the API readable.
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+// AddOpenApi builds its schemas from these options, not from MVC's
+// AddJsonOptions above, so the converter must be registered here too or the
+// document would describe the enums as integers.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+// The OpenAPI document doubles as the guided tour: the transformers order the
+// endpoints by lifecycle and pre-assemble the request bodies as named examples.
+builder.Services.AddOpenApi(options =>
+{
+    // Inline enum schemas instead of $ref-ing shared components: Swagger UI
+    // then shows the allowed values on every field, and the storyline
+    // transformer can attach examples directly to form fields like `Type`.
+    options.CreateSchemaReferenceId = info =>
+        info.Type.IsEnum ? null : OpenApiOptions.CreateDefaultSchemaReferenceId(info);
+    options.AddDocumentTransformer(StorylineOpenApi.TransformDocumentAsync);
+    options.AddOperationTransformer(StorylineOpenApi.TransformOperationAsync);
+});
 builder.Services.AddProblemDetails();
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
@@ -63,7 +80,8 @@ app.UseStatusCodePages();
 // API docs are part of the deliverable (the examiner explores the API through
 // them), so they are exposed in every environment, not just Development.
 app.MapOpenApi();
-app.MapScalarApiReference();
+app.UseSwaggerUI(options =>
+    options.SwaggerEndpoint("/openapi/v1.json", "ecert Document Review API"));
 
 app.UseHttpsRedirection();
 

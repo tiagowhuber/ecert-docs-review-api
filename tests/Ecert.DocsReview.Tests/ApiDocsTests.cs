@@ -1,9 +1,10 @@
 using System.Net;
+using System.Text.Json;
 
 namespace Ecert.DocsReview.Tests;
 
 /// <summary>
-/// The OpenAPI document and the Scalar UI are part of the deliverable (the
+/// The OpenAPI document and the Swagger UI are part of the deliverable (the
 /// examiner explores the API through them), so their availability is smoke
 /// tested like any other endpoint.
 /// </summary>
@@ -36,11 +37,73 @@ public class ApiDocsTests : IDisposable
     }
 
     [Fact]
-    public async Task ScalarUi_IsExposed()
+    public async Task SwaggerUi_IsExposed()
     {
-        var response = await _client.GetAsync("/scalar");
+        var response = await _client.GetAsync("/swagger");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task OpenApiDocument_TellsTheReviewStoryline_WithNamedExamples()
+    {
+        var response = await _client.GetAsync("/openapi/v1.json");
+
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync();
+        // Named request-body examples walk the reviewer through the lifecycle.
+        Assert.Contains("Paso 2", json);
+        Assert.Contains("Paso 5", json);
+        Assert.Contains("Corregir plazo", json);
+    }
+
+    [Fact]
+    public async Task OpenApiDocument_DescribesEnumsAsStrings()
+    {
+        var json = await _client.GetStringAsync("/openapi/v1.json");
+
+        // The API serializes enums by name, so the document must list the
+        // member names, not describe the fields as opaque integers.
+        var type = GetDocumentTypeFormFieldSchema(json);
+        var members = type.GetProperty("enum").EnumerateArray().ToArray();
+        Assert.Contains(members, m => m.ValueKind == JsonValueKind.String && m.GetString() == "Contract");
+        Assert.DoesNotContain(members, m => m.ValueKind == JsonValueKind.Number);
+        // Statuses too (they only appear by name when serialized as strings).
+        Assert.Contains("PendingReview", json);
+    }
+
+    [Fact]
+    public async Task OpenApiDocument_PrefillsTheDocumentTypeFormField()
+    {
+        var json = await _client.GetStringAsync("/openapi/v1.json");
+
+        var type = GetDocumentTypeFormFieldSchema(json);
+        Assert.Equal("Contract", type.GetProperty("example").GetString());
+    }
+
+    [Fact]
+    public async Task OpenApiDocument_OrdersTheStoryline_Paso0BeforePaso1()
+    {
+        var json = await _client.GetStringAsync("/openapi/v1.json");
+
+        // Swagger UI renders operations in document order, so the tour must
+        // open with Paso 0 (GET /api/documents) above Paso 1 (POST).
+        var paso0 = json.IndexOf("Paso 0", StringComparison.Ordinal);
+        var paso1 = json.IndexOf("Paso 1", StringComparison.Ordinal);
+        Assert.True(paso0 >= 0 && paso1 >= 0, "both Paso 0 and Paso 1 must be present");
+        Assert.True(paso0 < paso1, "Paso 0 must appear before Paso 1 in the document");
+    }
+
+    /// <summary>The `Type` form field of POST /api/documents in the OpenAPI JSON.</summary>
+    private static JsonElement GetDocumentTypeFormFieldSchema(string openApiJson)
+    {
+        using var doc = JsonDocument.Parse(openApiJson);
+        return doc.RootElement
+            .GetProperty("paths").GetProperty("/api/documents")
+            .GetProperty("post").GetProperty("requestBody")
+            .GetProperty("content").GetProperty("multipart/form-data")
+            .GetProperty("schema").GetProperty("properties").GetProperty("Type")
+            .Clone();
     }
 }
