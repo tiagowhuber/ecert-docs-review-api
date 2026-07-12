@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Ecert Document Review API",
-    "description": "Manual test collection for the ecert Document Review API.\n\nHow to use:\n1. Start the stack: `docker compose up --build` (API on http://localhost:8080).\n2. Open the 'Register document (201)' request, go to Body > form-data, and for the `File` row click 'Select Files' and pick a real .pdf. The other requests reuse the returned id automatically via the `documentId` collection variable.\n\nThe `baseUrl` variable defaults to http://localhost:8080 \u2014 change it under the collection's Variables tab if needed.",
+    "description": "Tour guiado (ES): las carpetas est\u00e1n ordenadas como recorrido \u2014 Health \u2192 Register \u2192 Consult \u2192 Status transitions \u2192 Observations \u2192 History \u2192 Versions \u2192 Validation. Ejec\u00fatelas en ese orden (o use el Collection Runner). Para los requests que suben archivo, seleccione los PDF incluidos en la carpeta `samples/` del repositorio (contrato-v1.pdf y contrato-v2.pdf).\n\nManual test collection for the ecert Document Review API.\n\nHow to use:\n1. Start the stack: `docker compose up --build` (API on http://localhost:8080).\n2. Open the 'Register document (201)' request, go to Body > form-data, and for the `File` row click 'Select Files' and pick `samples/contrato-v1.pdf` from this repository (any real .pdf works). The other requests reuse the returned id automatically via the `documentId` collection variable.\n\nThe `baseUrl` variable defaults to http://localhost:8080 \u2014 change it under the collection's Variables tab if needed.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -104,7 +104,7 @@
                 {
                   "key": "File",
                   "type": "file",
-                  "src": null
+                  "src": "samples/contrato-v1.pdf"
                 }
               ]
             },
@@ -118,7 +118,7 @@
                 "documents"
               ]
             },
-            "description": "Registers a new document plus its first PDF version (multipart/form-data).\n\nBEFORE SENDING: in Body > form-data, set the `File` row's type to 'File' (dropdown on the key) and select a real .pdf.\n\nValid `Type` values: Contract, Annex, Quotation, Report, Other.\n\nDo NOT add a Content-Type header manually \u2014 Postman sets the multipart boundary for you.\n\nOn success returns 201 + Location header; the test script saves the new id into the `documentId` variable for the Consult requests. The uploaded PDF is analyzed with PdfPig on the server; a parseable file gets its real page count stored on the version (pageCount in responses), an unparseable one is stored with pageCount null."
+            "description": "Registers a new document plus its first PDF version (multipart/form-data).\n\nBEFORE SENDING: in Body > form-data, set the `File` row's type to 'File' (dropdown on the key) and select a real .pdf.\n\nValid `Type` values: Contract, Annex, Quotation, Report, Other.\n\nDo NOT add a Content-Type header manually \u2014 Postman sets the multipart boundary for you.\n\nOn success returns 201 + Location header; the test script saves the new id into the `documentId` variable for the Consult requests. The uploaded PDF is analyzed with PdfPig on the server; a parseable file gets its real page count stored on the version (pageCount in responses), an unparseable one is stored with pageCount null.\n\nFile to select: `samples/contrato-v1.pdf` (from this repository)."
           }
         }
       ]
@@ -686,7 +686,7 @@
                 {
                   "key": "File",
                   "type": "file",
-                  "src": ""
+                  "src": "samples/contrato-v1.pdf"
                 }
               ]
             },
@@ -700,7 +700,7 @@
                 "documents"
               ]
             },
-            "description": "Registers a document that stays in Created, to demonstrate that observations are refused outside the review states. Attach any small PDF as File."
+            "description": "Registers a document that stays in Created, to demonstrate that observations are refused outside the review states. Attach any small PDF as File.\n\nFile to select: `samples/contrato-v1.pdf` (from this repository)."
           }
         },
         {
@@ -899,7 +899,7 @@
                 {
                   "key": "File",
                   "type": "file",
-                  "src": null
+                  "src": "samples/contrato-v2.pdf"
                 }
               ]
             },
@@ -915,7 +915,7 @@
                 "versions"
               ]
             },
-            "description": "Uploads a new version of the registered document. Select a DIFFERENT .pdf than the one used to register (identical content is rejected with 400).\n\nOnly allowed while the document is Created, PendingReview, or Rejected. Uploading to a Rejected document automatically moves it back to PendingReview (resubmission).\n\nReturns 201 with the updated document; currentVersionNumber is bumped."
+            "description": "Uploads a new version of the registered document. Select a DIFFERENT .pdf than the one used to register (identical content is rejected with 400).\n\nOnly allowed while the document is Created, PendingReview, or Rejected. Uploading to a Rejected document automatically moves it back to PendingReview (resubmission).\n\nReturns 201 with the updated document; currentVersionNumber is bumped.\n\nFile to select: `samples/contrato-v2.pdf` (from this repository)."
           }
         },
         {
@@ -948,7 +948,7 @@
                 {
                   "key": "File",
                   "type": "file",
-                  "src": null
+                  "src": "samples/contrato-v2.pdf"
                 }
               ]
             },
@@ -964,7 +964,7 @@
                 "versions"
               ]
             },
-            "description": "Select the SAME .pdf as the document's current version. The API compares SHA-256 hashes and rejects identical content -> 400 'The uploaded file is identical to the current version.'"
+            "description": "Select the SAME .pdf as the document's current version. The API compares SHA-256 hashes and rejects identical content -> 400 'The uploaded file is identical to the current version.'\n\nFile to select: `samples/contrato-v2.pdf` (from this repository)."
           }
         },
         {
@@ -994,7 +994,7 @@
                 {
                   "key": "File",
                   "type": "file",
-                  "src": null
+                  "src": "samples/contrato-v1.pdf"
                 }
               ]
             },
@@ -1010,7 +1010,7 @@
                 "versions"
               ]
             },
-            "description": "Run 'Submit for review' + 'Start review' first so the document is UnderReview, then send this (any .pdf) -> 409 'Cannot upload a new version while the document is UnderReview.'\n\nNew versions are only accepted while the document is Created, PendingReview, or Rejected."
+            "description": "Run 'Submit for review' + 'Start review' first so the document is UnderReview, then send this (any .pdf) -> 409 'Cannot upload a new version while the document is UnderReview.'\n\nNew versions are only accepted while the document is Created, PendingReview, or Rejected.\n\nFile to select: `samples/contrato-v1.pdf` (from this repository)."
           }
         },
         {
@@ -1237,7 +1237,7 @@
                 {
                   "key": "File",
                   "type": "file",
-                  "src": null
+                  "src": "samples/contrato-v1.pdf"
                 }
               ]
             },
@@ -1251,7 +1251,7 @@
                 "documents"
               ]
             },
-            "description": "No Title field -> 400 'The Title field is required.' (Select a valid .pdf for File so the failure is specifically the missing title.)"
+            "description": "No Title field -> 400 'The Title field is required.' (Select a valid .pdf for File so the failure is specifically the missing title.)\n\nFile to select: `samples/contrato-v1.pdf` (from this repository)."
           }
         },
         {

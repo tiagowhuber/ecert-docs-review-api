@@ -1,6 +1,109 @@
-@Ecert.DocsReview.Api_HostAddress = http://localhost:5206
+@baseUrl = http://localhost:8080
+# Para `dotnet run` local use: @baseUrl = http://localhost:5206
+# Reemplace {{documentId}} por el id devuelto al registrar un documento.
+@documentId = 00000000-0000-0000-0000-000000000000
 
-GET {{Ecert.DocsReview.Api_HostAddress}}/weatherforecast/
+### Health check
+GET {{baseUrl}}/health
+
+### Listar documentos (los sembrados aparecen aquí)
+GET {{baseUrl}}/api/documents
 Accept: application/json
 
-###
+### Listar por estado
+GET {{baseUrl}}/api/documents?status=Rejected
+Accept: application/json
+
+### Registrar documento con su primera versión (multipart)
+POST {{baseUrl}}/api/documents
+Content-Type: multipart/form-data; boundary=Boundary
+
+--Boundary
+Content-Disposition: form-data; name="Title"
+
+Contrato Demo HTTP
+--Boundary
+Content-Disposition: form-data; name="Type"
+
+Contract
+--Boundary
+Content-Disposition: form-data; name="UploadedBy"
+
+juan.author
+--Boundary
+Content-Disposition: form-data; name="File"; filename="contrato-v1.pdf"
+Content-Type: application/pdf
+
+< ../../samples/contrato-v1.pdf
+--Boundary--
+
+### Detalle del documento con historial de versiones
+GET {{baseUrl}}/api/documents/{{documentId}}
+Accept: application/json
+
+### Enviar a revisión (Created -> PendingReview)
+POST {{baseUrl}}/api/documents/{{documentId}}/status
+Content-Type: application/json
+
+{ "targetStatus": "PendingReview", "performedBy": "juan.author" }
+
+### Tomar la revisión (PendingReview -> UnderReview)
+POST {{baseUrl}}/api/documents/{{documentId}}/status
+Content-Type: application/json
+
+{ "targetStatus": "UnderReview", "performedBy": "maria.reviewer" }
+
+### Registrar una observación
+POST {{baseUrl}}/api/documents/{{documentId}}/observations
+Content-Type: application/json
+
+{
+  "type": "CorrectionRequest",
+  "content": "El plazo de la cláusula 2 no coincide con lo cotizado.",
+  "createdBy": "maria.reviewer"
+}
+
+### Rechazar con motivo (UnderReview -> Rejected)
+POST {{baseUrl}}/api/documents/{{documentId}}/status
+Content-Type: application/json
+
+{
+  "targetStatus": "Rejected",
+  "performedBy": "maria.reviewer",
+  "reason": "Corregir plazo y precio antes de reenviar."
+}
+
+### Subir versión corregida (Rejected -> PendingReview automático)
+POST {{baseUrl}}/api/documents/{{documentId}}/versions
+Content-Type: multipart/form-data; boundary=Boundary
+
+--Boundary
+Content-Disposition: form-data; name="UploadedBy"
+
+juan.author
+--Boundary
+Content-Disposition: form-data; name="File"; filename="contrato-v2.pdf"
+Content-Type: application/pdf
+
+< ../../samples/contrato-v2.pdf
+--Boundary--
+
+### Aprobar (primero volver a UnderReview, luego Approved)
+POST {{baseUrl}}/api/documents/{{documentId}}/status
+Content-Type: application/json
+
+{ "targetStatus": "Approved", "performedBy": "maria.reviewer" }
+
+### Observaciones del documento
+GET {{baseUrl}}/api/documents/{{documentId}}/observations
+Accept: application/json
+
+### Trazabilidad completa (auditoría)
+GET {{baseUrl}}/api/documents/{{documentId}}/history
+Accept: application/json
+
+### Descargar el PDF vigente
+GET {{baseUrl}}/api/documents/{{documentId}}/file
+
+### Descargar la versión 1
+GET {{baseUrl}}/api/documents/{{documentId}}/versions/1/file

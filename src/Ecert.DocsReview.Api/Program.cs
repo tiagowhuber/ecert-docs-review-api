@@ -4,6 +4,7 @@ using Ecert.DocsReview.Api.Infrastructure;
 using Ecert.DocsReview.Api.Infrastructure.Pdf;
 using Ecert.DocsReview.Api.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -59,11 +60,10 @@ if (!app.Environment.IsEnvironment("Testing"))
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
+// API docs are part of the deliverable (the examiner explores the API through
+// them), so they are exposed in every environment, not just Development.
+app.MapOpenApi();
+app.MapScalarApiReference();
 
 app.UseHttpsRedirection();
 
