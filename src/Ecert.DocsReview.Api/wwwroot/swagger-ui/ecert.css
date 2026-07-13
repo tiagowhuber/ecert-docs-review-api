@@ -153,6 +153,20 @@ body { background: var(--ecert-bg); }
   font-size: 12px;
   font-weight: 700;
 }
+.ecert-card__action {
+  border: 0;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--ecert-brand), var(--ecert-brand-2));
+  box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25);
+  transition: transform 0.08s ease, box-shadow 0.15s ease;
+}
+.ecert-card__action:hover:not(:disabled) { transform: translateY(-1px); }
+.ecert-card__action:disabled { opacity: 0.6; cursor: default; }
 .ecert-card__sub {
   margin-left: auto;
   color: var(--ecert-muted);

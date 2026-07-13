@@ -16,6 +16,7 @@
   var state = {
     activeId: null,        // selected document id
     userPicked: false,     // has the examiner clicked a row themselves?
+    creating: false,       // "+ New document" request in flight
     seen: { docs: {}, versions: {}, events: {} }, // id -> true, for new-row diff
     firstRender: { docs: true, versions: true, events: true },
     lastDoc: null,         // last fetched detail for the selected document
@@ -65,11 +66,12 @@
       '<section class="ecert-dash">' +
         '<div class="ecert-dash__head">' +
           "<h2>Live dashboard</h2>" +
-          '<span class="ecert-dash__hint">Run an operation below and watch the rows appear. Click a document to see its versions &amp; events.</span>' +
+          '<span class="ecert-dash__hint">Click a document to see its versions &amp; events.</span>' +
           '<span class="ecert-dash__live">live</span>' +
         "</div>" +
         '<div class="ecert-grid">' +
-          card("docs", "Documents", "") +
+          card("docs", "Documents", "",
+            '<button class="ecert-card__action" type="button" data-act="new-doc">+ New document</button>') +
           card("flow", "Review flow", "Select a document") +
           '<div class="ecert-grid__row2">' +
             card("versions", "Document versions", "Select a document") +
@@ -80,12 +82,13 @@
     );
     return dash;
   }
-  function card(key, title, sub) {
+  function card(key, title, sub, actionHtml) {
     return (
       '<div class="ecert-card" data-card="' + key + '">' +
         '<div class="ecert-card__head">' +
           '<span class="ecert-card__title">' + title + "</span>" +
           '<span class="ecert-card__count" data-count="' + key + '">0</span>' +
+          (actionHtml || "") +
           '<span class="ecert-card__sub" data-sub="' + key + '">' + sub + "</span>" +
         "</div>" +
         '<div class="ecert-card__body"><div class="ecert-empty">Loading…</div></div>' +
@@ -292,7 +295,7 @@
   // hand-filling Swagger's Try-it-out forms each time.
   var FLOW_STEPS = ["Created", "PendingReview", "UnderReview", "Approved"];
   var PERSONA = { author: "juan.author", reviewer: "maria.reviewer" };
-  // Same wording as the "Paso 5" example in StorylineOpenApi so the two
+  // Same wording as the "Paso 6" example in StorylineOpenApi so the two
   // demo paths (guided Swagger form vs. one-click flow) tell one story.
   var REJECT_REASON = "Corregir plazo y precio antes de reenviar.";
 
@@ -362,6 +365,36 @@
       displayBody: "UploadedBy: " + uploadedBy + "\nFile: " + file.name + " (" + file.size + " bytes, multipart/form-data)",
       exec: function () { return request("POST", path, { form: form }); },
     };
+  }
+
+  // "+ New document" in the Documents card header: registers a fresh sample
+  // document (Paso 1, with a unique sample PDF attached) so the examiner can
+  // run the whole review flow again without touching the Swagger form.
+  function registerNewDocument(btn) {
+    if (state.creating) return;
+    state.creating = true;
+    var originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Creating…";
+
+    var text = "ecert sample document " + Date.now();
+    var file = new File([buildSamplePdf(text)], "ecert-sample.pdf", { type: "application/pdf" });
+    var form = new FormData();
+    form.append("Title", "Contrato Demo " + new Date().toLocaleTimeString());
+    form.append("Type", "Contract");
+    form.append("UploadedBy", "juan.author");
+    form.append("File", file);
+
+    request("POST", API, { form: form }).then(function (result) {
+      state.userPicked = true;
+      state.activeId = result.body.id;
+      return refreshDocuments();
+    }).catch(function () {/* leave the dashboard as-is; next poll is unaffected */})
+      .then(function () {
+        state.creating = false;
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+      });
   }
 
   function runFlowAction(action) {
@@ -593,6 +626,9 @@
 
     var dash = buildDashboard();
     info.parentNode.insertBefore(dash, info.nextSibling);
+    dash.querySelector('[data-act="new-doc"]').addEventListener("click", function () {
+      registerNewDocument(this);
+    });
 
     refreshDocuments();
     setInterval(refreshDocuments, POLL_MS);

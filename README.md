@@ -51,12 +51,14 @@ El seeder deja tres documentos que cubren distintas etapas del ciclo de vida:
 
 ## Decisiones
 
-- **Integración externa — PdfPig** al subir cada versión se valida que el archivo sea un PDF real y se obtiene el **conteo de páginas**, que se persiste y expone en las respuestas. Se eligió una biblioteca local en lugar de una API ya que no requierecredenciales ni red, y la integración aún queda claramente separada del dominio detrás de la interfaz `IPdfAnalyzer` (`Infrastructure/Pdf/`)
+- **Integración externa — PdfPig**: al subir cada versión, PdfPig obtiene el **conteo de páginas**, que se persiste y expone en las respuestas. Se eligió una biblioteca local en lugar de una API ya que no requiere credenciales ni red, y la integración queda claramente separada del dominio detrás de la interfaz `IPdfAnalyzer` (`Infrastructure/Pdf/`).
 - **Archivos en disco, metadatos en PostgreSQL**: los PDF se guardan vía `IFileStorage` (volumen Docker) y la base guarda metadatos + SHA-256 (fingerprint del archivo). El almacenamiento también queda separado del dominio detrás de la interfaz `IFileStorage`, por lo que puede reemplazarse fácilmente por otro backend (p. ej. S3) implementando esa interfaz, sin tocar el resto de la aplicación.
 - **Las observaciones apuntan a la versión del documento**: cada observación queda asociada a la versión sobre la que fue hecha, así se sabe exactamente a qué contenido se refería el comentario.
 - **Máquina de estados como dominio puro** (`Domain/DocumentStateMachine.cs`): sin dependencias de EF ni HTTP, cada regla es testeable en aislamiento.
 - **Trazabilidad por eventos**: cada acción (creación, subida de versión, cambio de estado, observación) genera un `DocumentEvent` inmutable; `GET /history` es la auditoría completa.
 - **Errores como ProblemDetails (RFC 7807)**: 400 de validación, 404 inexistente, 409 conflicto de estado, con detalle legible.
+- **Versión vigente calculada, nunca almacenada**: la versión actual es siempre la de número más alto, así no puede quedar desincronizada del historial (evita inconsistencias entre versiones y estados).
+- **Auditoría en la misma transacción**: cada acción y sus eventos se guardan en un solo `SaveChanges`, por lo que el historial nunca puede contradecir los datos.
 - **Tests**: 87 pruebas (unitarias de dominio e integración del pipeline HTTP real con `WebApplicationFactory` sobre SQLite en memoria). La documentación (OpenAPI/Swagger) también tiene smoke tests.
 
 ## Estructura del proyecto

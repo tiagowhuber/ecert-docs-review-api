@@ -32,7 +32,7 @@ public static class StorylineOpenApi
         document.Info.Description =
             "Los endpoints están ordenados por el ciclo de vida del documento, " +
             "y cada uno trae sus bodies pre-armados" +
-            "se adjunta un PDF de ejemplo automáticamente";
+            " se adjunta un PDF de ejemplo automáticamente";
 
         var ordered = document.Paths
             .OrderBy(p =>
@@ -70,9 +70,8 @@ public static class StorylineOpenApi
                 Describe(operation,
                     "Paso 1 — Registre el documento con su primera versión. Los campos ya vienen " +
                     "pre-cargados y en `File` se adjunta un PDF de ejemplo automáticamente, así que " +
-                    "basta con presionar Execute (o reemplazarlo por un PDF propio, p. ej. " +
-                    "`samples/contrato-v1.pdf`). La respuesta incluye `pageCount` calculado con " +
-                    "PdfPig; guarde el `id` para los pasos siguientes.");
+                    "basta con presionar Execute " +
+                    "guarde el `id` del documento para los pasos siguientes.");
                 SetFormFieldExamples(operation, new Dictionary<string, string>
                 {
                     ["Title"] = "Contrato Demo",
@@ -83,7 +82,7 @@ public static class StorylineOpenApi
 
             case "POST api/documents/{id}/status":
                 Describe(operation,
-                    "Pasos 2, 3, 5 y 7 de la historia: en 'Try it out', el desplegable 'Examples' " +
+                    "Pasos 2, 3, 6 y 8 de la historia: el desplegable 'Examples' " +
                     "trae el body de cada paso ya armado. Rechazar exige `reason`, que queda " +
                     "registrado como observación; una transición inválida devuelve 409.");
                 SetJsonExamples(operation, new (string Key, string Summary, JsonNode Body)[]
@@ -102,16 +101,16 @@ public static class StorylineOpenApi
                             ["targetStatus"] = "UnderReview",
                             ["performedBy"] = "maria.reviewer",
                         }),
-                    ("paso-5-rechazar-con-motivo",
-                        "Paso 5 — Rechazar con motivo obligatorio (UnderReview → Rejected)",
+                    ("paso-6-rechazar-con-motivo",
+                        "Paso 6 — Rechazar con motivo obligatorio (UnderReview → Rejected)",
                         new JsonObject
                         {
                             ["targetStatus"] = "Rejected",
                             ["performedBy"] = "maria.reviewer",
                             ["reason"] = "Corregir plazo y precio antes de reenviar.",
                         }),
-                    ("paso-7-aprobar",
-                        "Paso 7 — Aprobar la versión corregida (UnderReview → Approved; repita antes el paso 3)",
+                    ("paso-8-aprobar",
+                        "Paso 8 — Aprobar la versión corregida (UnderReview → Approved; repita antes el paso 3)",
                         new JsonObject
                         {
                             ["targetStatus"] = "Approved",
@@ -147,8 +146,8 @@ public static class StorylineOpenApi
 
             case "POST api/documents/{id}/versions":
                 Describe(operation,
-                    "Paso 6 — El autor sube la versión corregida: `File` ya trae un PDF de ejemplo " +
-                    "adjunto (o reemplácelo por `samples/contrato-v2.pdf`). Un documento rechazado " +
+                    "Paso 7 — El autor sube la versión corregida: `File` ya trae un PDF de ejemplo " +
+                    "adjunto. Un documento rechazado " +
                     "vuelve automáticamente a PendingReview; un archivo idéntico al vigente devuelve 400.");
                 SetFormFieldExamples(operation, new Dictionary<string, string>
                 {
@@ -158,14 +157,21 @@ public static class StorylineOpenApi
 
             case "GET api/documents/{id}/history":
                 Describe(operation,
-                    "Paso 8 — Trazabilidad: la auditoría completa del documento (creación, " +
+                    "Paso 9 — Trazabilidad: la auditoría completa del documento (creación, " +
                     "versiones, cambios de estado y observaciones) en orden cronológico.");
                 break;
 
             case "GET api/documents/{id}/observations":
+                // Shares its path with POST .../observations (Paso 4), and Swagger UI
+                // groups every method of a path into one block — so this GET always
+                // renders right next to Paso 4, not down near Paso 9. Numbered Paso 5
+                // (not late, e.g. "Paso 9") so the labels stay in the order they're
+                // actually encountered on the page; re-run it after Paso 6 to also see
+                // the rejection reason show up.
                 Describe(operation,
-                    "Paso 9 — Todas las observaciones registradas, indicando a qué versión " +
-                    "pertenece cada una (incluido el motivo del rechazo del paso 5).");
+                    "Paso 5 — Todas las observaciones registradas, indicando a qué versión " +
+                    "pertenece cada una. Vuelva a ejecutarlo después del paso 6 para ver también " +
+                    "el motivo del rechazo.");
                 break;
 
             case "GET api/documents/{id}":
