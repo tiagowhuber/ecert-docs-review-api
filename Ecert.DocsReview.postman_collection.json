@@ -104,7 +104,7 @@
                 {
                   "key": "File",
                   "type": "file",
-                  "src": "samples/contrato-v1.pdf"
+                  "src": null
                 }
               ]
             },
@@ -686,7 +686,7 @@
                 {
                   "key": "File",
                   "type": "file",
-                  "src": "samples/contrato-v1.pdf"
+                  "src": null
                 }
               ]
             },
@@ -899,7 +899,7 @@
                 {
                   "key": "File",
                   "type": "file",
-                  "src": "samples/contrato-v2.pdf"
+                  "src": null
                 }
               ]
             },
@@ -948,7 +948,7 @@
                 {
                   "key": "File",
                   "type": "file",
-                  "src": "samples/contrato-v2.pdf"
+                  "src": null
                 }
               ]
             },
@@ -994,7 +994,7 @@
                 {
                   "key": "File",
                   "type": "file",
-                  "src": "samples/contrato-v1.pdf"
+                  "src": null
                 }
               ]
             },
@@ -1237,7 +1237,7 @@
                 {
                   "key": "File",
                   "type": "file",
-                  "src": "samples/contrato-v1.pdf"
+                  "src": null
                 }
               ]
             },

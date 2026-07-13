@@ -19,8 +19,8 @@ Eso levanta PostgreSQL y la API; al arrancar, la API **aplica migraciones y siem
 
 ## Demo
 
-- **Swagger UI (consola)**: abrir <http://localhost:8080/swagger>. Muestra un **dashboard en vivo** con tres tablas —**Documentos**, **Versiones** y **Eventos**— que se refrescan solas y resaltan las filas nuevas a medida que se ejecuta cada operación. Los endpoints están ordenados como un ciclo de vida de un documento y los bodies vienen pre-armados: "Try it out" ya está activado y en los endpoints JSON el desplegable **Examples** trae cada paso listo ("Paso 2 — Enviar a revisión", "Paso 5 — Rechazar con motivo", …). En los uploads se adjunta automáticamente un PDF de ejemplo válido, así que **basta con presionar Execute** (o reemplazarlo por un PDF propio, p. ej. los de `samples/`).
-- **Postman**: importar `Ecert.DocsReview.postman_collection.json`. Las carpetas están ordenadas como tour (registro → consulta → estados → observaciones → historial → versiones → validaciones) e incluyen casos de éxito y de error.
+- **Swagger UI (consola)**: abrir <http://localhost:8080/swagger>. Muestra un dashboard en vivo con tres tablas que resaltan las filas nuevas a medida que se ejecuta cada operación. Los endpoints están ordenados como un ciclo de vida de un documento y los bodies vienen pre-armados.
+- **Postman**: importar `Ecert.DocsReview.postman_collection.json`. Las carpetas están ordenadas como registro → consulta → estados → observaciones → historial → versiones → validaciones e incluyen casos de éxito y de error.
 
 ## Ciclo de vida del documento
 
@@ -37,16 +37,11 @@ stateDiagram-v2
     Archived --> [*]
 ```
 
-Reglas implementadas por `DocumentStateMachine`:
 
-- Solo se aceptan **nuevas versiones** en `Created`, `PendingReview` o `Rejected`; en un documento rechazado, la subida lo reencola automáticamente a `PendingReview`.
-- Las **observaciones** solo se registran dentro del bucle de revisión (`PendingReview`, `UnderReview`, `Rejected`).
-- **Rechazar exige un motivo**, que se persiste como observación `RejectionReason` sobre la versión rechazada.
-- Se rechazan archivos que no son PDF, vacíos, demasiado grandes o **idénticos a la versión vigente** (comparación por SHA-256).
 
 ## Datos sembrados
 
-El seeder deja tres documentos que cubren distintas etapas del ciclo de vida (útiles para consultar historial y observaciones sin crear nada):
+El seeder deja tres documentos que cubren distintas etapas del ciclo de vida:
 
 | Documento | Tipo | Estado | Demuestra |
 |---|---|---|---|
@@ -57,12 +52,11 @@ El seeder deja tres documentos que cubren distintas etapas del ciclo de vida (ú
 ## Decisiones
 
 - **Integración externa — PdfPig** al subir cada versión se valida que el archivo sea un PDF real y se obtiene el **conteo de páginas**, que se persiste y expone en las respuestas. Se eligió una biblioteca local en lugar de una API ya que no requierecredenciales ni red, y la integración aún queda claramente separada del dominio detrás de la interfaz `IPdfAnalyzer` (`Infrastructure/Pdf/`)
+- **Archivos en disco, metadatos en PostgreSQL**: los PDF se guardan vía `IFileStorage` (volumen Docker) y la base guarda metadatos + SHA-256 (fingerprint del archivo). El almacenamiento también queda separado del dominio detrás de la interfaz `IFileStorage`, por lo que puede reemplazarse fácilmente por otro backend (p. ej. S3) implementando esa interfaz, sin tocar el resto de la aplicación.
+- **Las observaciones apuntan a la versión del documento**: cada observación queda asociada a la versión sobre la que fue hecha, así se sabe exactamente a qué contenido se refería el comentario.
 - **Máquina de estados como dominio puro** (`Domain/DocumentStateMachine.cs`): sin dependencias de EF ni HTTP, cada regla es testeable en aislamiento.
 - **Trazabilidad por eventos**: cada acción (creación, subida de versión, cambio de estado, observación) genera un `DocumentEvent` inmutable; `GET /history` es la auditoría completa.
-- **Las observaciones apuntan a la versión del documento**: cada observación queda asociada a la versión sobre la que fue hecha, así se sabe exactamente a qué contenido se refería el comentario.
-- **Archivos en disco, metadatos en PostgreSQL**: los PDF se guardan vía `IFileStorage` (volumen Docker) y la base guarda metadatos + SHA-256; separa el binario del modelo relacional y facilita migrar a un blob storage. El almacenamiento también queda separado del dominio detrás de la interfaz `IFileStorage`, por lo que puede reemplazarse fácilmente por otro backend (p. ej. S3) implementando esa interfaz, sin tocar el resto de la aplicación.
 - **Errores como ProblemDetails (RFC 7807)**: 400 de validación, 404 inexistente, 409 conflicto de estado, con detalle legible.
-- **Migraciones + seeder al arrancar**: `docker compose up` deja la base lista sin pasos manuales.
 - **Tests**: 87 pruebas (unitarias de dominio e integración del pipeline HTTP real con `WebApplicationFactory` sobre SQLite en memoria). La documentación (OpenAPI/Swagger) también tiene smoke tests.
 
 ## Estructura del proyecto
@@ -78,18 +72,17 @@ tests/Ecert.DocsReview.Tests/
 samples/            # PDFs de ejemplo para el tour (contrato-v1.pdf, contrato-v2.pdf)
 ```
 
+## Reglas implementadas por `DocumentStateMachine`:
+
+- Solo se aceptan **nuevas versiones** en `Created`, `PendingReview` o `Rejected`; en un documento rechazado, la subida lo reencola automáticamente a `PendingReview`.
+- Las **observaciones** solo se registran dentro del bucle de revisión (`PendingReview`, `UnderReview`, `Rejected`).
+- **Rechazar exige un motivo**, que se persiste como observación `RejectionReason` sobre la versión rechazada.
+- Se rechazan archivos que no son PDF, vacíos, demasiado grandes o **idénticos a la versión vigente** (comparación por SHA-256).
+
 ## Ejecutar los tests
 
 Requiere el SDK de .NET 10 (no necesita base de datos: los tests de integración usan SQLite en memoria).
 
 ```bash
 dotnet test
-```
-
-## Ejecución local sin Docker (opcional)
-
-```bash
-docker compose up db -d   # solo PostgreSQL
-dotnet run --project src/Ecert.DocsReview.Api
-# API en http://localhost:5206
 ```
